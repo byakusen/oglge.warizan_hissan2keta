@@ -72,6 +72,20 @@
         border-color: #5a4abd;
         box-shadow: 0 3px 0 #4a3aad;
     }
+    /* 「仮の商」タブだけ色を変える */
+    .tab-btn.kari-tab {
+        color: #00796b;
+        background: #e0f2f1;
+        border-color: #80cbc4;
+        box-shadow: 0 2px 0 #80cbc4;
+    }
+    .tab-btn.kari-tab:hover { background: #b2dfdb; }
+    .tab-btn.kari-tab.active {
+        color: #fff;
+        background: #00897b;
+        border-color: #00695c;
+        box-shadow: 0 3px 0 #004d40;
+    }
     /* 立てるところに残る、うっすらとした最初の数字 */
     .ghost-num {
         color: #f0a030;
@@ -102,6 +116,33 @@
     }
 
     /* 追加機能のスタイル */
+    /* 仮の商タブの難易度ボタン（チュートリアル欄と同じ場所に出す） */
+    .level-wrap {
+        display: none;
+        justify-content: center;
+        gap: 8px;
+        width: fit-content;
+        margin: -15px auto 5px;
+        background: #fff;
+        border-radius: 12px;
+        padding: 5px 12px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+    }
+    .level-btn {
+        font-size: 1rem;
+        padding: 6px 18px;
+        border-radius: 10px;
+        background: #e0f2f1;
+        color: #00796b;
+        border: 2px solid #80cbc4;
+        box-shadow: none;
+    }
+    .level-btn:hover { background: #b2dfdb; }
+    .level-btn.active {
+        background: #00897b;
+        color: #fff;
+        border-color: #00695c;
+    }
     .tutorial-wrap {
         display: flex;
         justify-content: center;
@@ -393,6 +434,52 @@
     .controls.yoko-mode .hint-row { margin-top: 200px; }
     .controls.yoko-mode .hint-row > button { font-size: 1.05rem; padding: 12px 6px; }
 
+    /* --- 仮の商モード：たてる〜おろすの代わりに、見当のつけ方のヒントを並べる --- */
+    .kari-hints { display: none; flex-direction: column; gap: 10px; }
+    .kari-btn {
+        background: linear-gradient(145deg, #4db6ac, #00897b);
+        color: #fff;
+        border: 2px solid #00796b;
+        box-shadow: 0 4px 0 #00695c;
+        font-size: 1.05rem;
+        padding: 12px 6px;
+    }
+    .kari-btn:active { box-shadow: 0 0 0 #00695c; transform: translateY(4px); }
+    .kari-btn.on { background: linear-gradient(145deg, #ffb74d, #f57c00); border-color: #ef6c00; box-shadow: 0 4px 0 #e65100; }
+    .controls.kari-mode { min-width: 168px; }
+    .controls.kari-mode .action-btn { display: none; }
+    .controls.kari-mode .hint-row { display: none; }
+    .controls.kari-mode .kari-hints { display: flex; }
+    /* 「大きくみる」ヒント：元の数に薄い赤線を引き、同じマスの中に赤い数を書く */
+    /* 仮の商タブは、赤字が出ても動かないよう、最初から数字を少し上げておく */
+    .round-shift { padding-bottom: 10px; }
+    /* 数字の真ん中にかぶせる赤い線。マスの端までは引かない（わる数とわられる数がつながらないように） */
+    .round-strike {
+        position: absolute;
+        left: 12px;
+        top: 18px;
+        height: 7px;
+        border-radius: 4px;
+        background: rgba(229, 57, 53, 0.25);
+        pointer-events: none;
+    }
+    .round-up {
+        position: absolute;
+        left: 0;
+        bottom: 1px;
+        display: flex;
+        justify-content: center;
+        gap: 0.85em;
+        color: #e53935;
+        font-size: 0.95rem;
+        font-weight: bold;
+        line-height: 1;
+        pointer-events: none;
+    }
+    /* 仮の商のはんてい表示 */
+    .kari-msg { color: #d32f2f; }
+    .kari-ok { color: #2e7d32; }
+
     /* テンキー */
     .numpad {
         /* display: none; を削除し、常にスペースを確保してガタつきを防止します */
@@ -441,6 +528,10 @@
         .numpad.visible {
             display: grid;
         }
+        /* 仮の商のヒントボタンは横に並べる */
+        .controls.kari-mode { min-width: 0; width: 100%; }
+        .controls.kari-mode .kari-hints { flex-direction: row; flex-wrap: wrap; justify-content: center; }
+        .kari-btn { font-size: 0.95rem; padding: 10px 8px; }
     }
 
     /* アニメーション・エフェクト */
@@ -564,10 +655,16 @@
         <button class="tab-btn" data-mode="3digit_div1">筆算４</button>
         <button class="tab-btn" data-mode="3digit_div2">筆算５</button>
         <button class="tab-btn" data-mode="3digit_div3">筆算６</button>
+        <button class="tab-btn kari-tab" data-mode="karishou">仮の商</button>
     </div>
     
     <div class="tutorial-wrap">
         <label><input type="checkbox" id="tutorial-mode"> チュートリアル（自動ヒント）</label>
+    </div>
+    <div id="kari-level" class="level-wrap">
+        <button class="level-btn" data-level="easy">かんたん</button>
+        <button class="level-btn" data-level="hard">むずかしい</button>
+        <button class="level-btn active" data-level="random">ランダム</button>
     </div>
     
     <div id="instruction" class="header">読み込み中...</div>
@@ -671,6 +768,11 @@
             <button id="btn-kakeru" class="action-btn">かける</button>
             <button id="btn-hiku" class="action-btn">ひく</button>
             <button id="btn-orosu" class="action-btn">おろす</button>
+            <div class="kari-hints">
+                <button id="btn-kakusu" class="kari-btn">指でかくす</button>
+                <button id="btn-divup" class="kari-btn">わる数を大きく</button>
+                <button id="btn-bothup" class="kari-btn">わられる数も大きく</button>
+            </div>
             <div class="hint-row">
                 <button id="btn-hint" class="hint-btn">ヒント</button>
                 <button id="btn-tashikame" class="tashikame-btn">たしかめ</button>
@@ -707,6 +809,13 @@ let yokoLay = null; // 横式：式の配置情報（列位置など）
 let qBig, sub1Big; // 筆算2：最初に立てる大きすぎる商とその積
 let qBig1, qBig2, sub1Big1, sub1Big2; // 筆算3：見当(q+2)→修正1(q+1)→正解(q) の商と積
 let est1, est2; // 筆算5：各けたの見当（＝正しい商のけた+1）
+let estOver = false; // 筆算4：指でかくすと見当が10以上になる問題か（例 408÷46 → 40÷4＝10）
+let noRedo1 = false, noRedo2 = false; // 見当がそのまま当たる（立てなおしなし）か。筆算5は十の位/一の位で別々
+let kariHint = null;   // 仮の商タブのヒント状態 'kakusu' / 'divup' / 'bothup'
+let kariBusy = false;  // 仮の商タブ：かけ算を見せている間は次の入力を受けない
+let kariTries = 0;     // 仮の商タブ：立てなおした回数
+let kariLay = { divCols: [0, 1], dvCols: [2, 3], onesCol: 3, qCell: 'r0-c3' }; // 仮の商タブの配置
+let kariLevel = 'random';  // 仮の商タブの難易度 'easy' / 'hard' / 'random'
 let state = 0;
 let selectedCells = [];
 let states = [];
@@ -718,6 +827,15 @@ let startTime = 0;
 let errorStats = { tateru: 0, kakeru: 0, hiku: 0, orosu: 0, other: 0 };
 
 function generateStates() {
+    if (mode === 'karishou') {
+        // 仮の商：何度でも試せる。ぴったり合ったときだけ終了
+        states = [
+            { id: 0, text: kariLay.tens ? "十の位に仮の商をたてよう。ヒントも使ってみてね。" : "仮の商をたてよう。ヒントも使ってみてね。",
+              type: "input", expect: () => q, targetCell: kariLay.qCell },
+            { id: 1, text: "ぴったり！", type: "finish" }
+        ];
+        return;
+    }
     if (mode === 'yokoshiki') {
         // 横式：答えを入力 →「たしかめ」→（あまりがあればひき算で入力）→終了
         const rem = dividend - q * divisor;
@@ -746,7 +864,9 @@ function generateStates() {
         states = [
             { id: 0, text: "はじめに何をしますか。", type: "action", expect: "tateru" },
             { id: 1, text: "商はA・B・Cのどこにたちますか。", type: "click_cell", expect: "r0-c5" },
-            { id: 2, text: "何をたてますか。（指でかくして見当を）", type: "input", expect: () => qBig, targetCell: "r0-c5", altExpect: () => q, altNext: 7 },
+            { id: 2, text: "何をたてますか。（指でかくして見当を）", type: "input",
+              expect: () => qBig, targetCell: "r0-c5", next: noRedo1 ? 7 : undefined,
+              altExpect: () => q, altNext: 7 },
             { id: 3, text: "次に何をしますか。", type: "action", expect: "kakeru" },
             { id: 4, text: "何と何をかけますか。", type: "click_cells_group", expectGroups: [ ["r1-c0", "r1-c1", "r1-c2"], ["r0-c5"] ] },
             { id: 5, text: "かけ算をして、下にうつしましょう。", type: "wait" },
@@ -762,7 +882,9 @@ function generateStates() {
         states = [
             { id: 0, text: "はじめに何をしますか。", type: "action", expect: "tateru" },
             { id: 1, text: "商はA・B・Cのどこにたちますか。", type: "click_cell", expect: "r0-c3" },
-            { id: 2, text: "十の位に何をたてますか。（指でかくして見当を）", type: "input", expect: () => est1, targetCell: "r0-c3", altExpect: () => q1, altNext: 7 },
+            { id: 2, text: "十の位に何をたてますか。（指でかくして見当を）", type: "input",
+              expect: () => est1, targetCell: "r0-c3", next: noRedo1 ? 7 : undefined,
+              altExpect: () => q1, altNext: 7 },
             { id: 3, text: "次に何をしますか。", type: "action", expect: "kakeru" },
             { id: 4, text: "何と何をかけますか。", type: "click_cells_group", expectGroups: [ ["r1-c0", "r1-c1"], ["r0-c3"] ] },
             { id: 5, text: "かけ算をして、下にうつしましょう。", type: "wait" },
@@ -774,7 +896,9 @@ function generateStates() {
             { id: 11, text: "次に何をしますか。", type: "action", expect: "orosu" },
             { id: 12, text: "どこに何をおろしますか。", type: "drag_drop", source: "r1-c4", target: "r3-c4" },
             { id: 13, text: "次に何をしますか。", type: "action", expect: "tateru" },
-            { id: 14, text: "一の位に何をたてますか。（指でかくして見当を）", type: "input", expect: () => est2, targetCell: "r0-c4", altExpect: () => q2, altNext: 19 },
+            { id: 14, text: "一の位に何をたてますか。（指でかくして見当を）", type: "input",
+              expect: () => est2, targetCell: "r0-c4", next: noRedo2 ? 19 : undefined,
+              altExpect: () => q2, altNext: 19 },
             { id: 15, text: "次に何をしますか。", type: "action", expect: "kakeru" },
             { id: 16, text: "何と何をかけますか。", type: "click_cells_group", expectGroups: [ ["r1-c0", "r1-c1"], ["r0-c4"] ] },
             { id: 17, text: "かけ算をして、下にうつしましょう。", type: "wait" },
@@ -790,7 +914,11 @@ function generateStates() {
         states = [
             { id: 0, text: "はじめに何をしますか。", type: "action", expect: "tateru" },
             { id: 1, text: "商はA・B・Cのどこにたちますか。", type: "click_cell", expect: "r0-c4" },
-            { id: 2, text: "何をたてますか。（指でかくして見当をつけよう）", type: "input", expect: () => qBig, targetCell: "r0-c4", altExpect: () => q, altNext: 7 },
+            { id: 2, text: estOver
+                ? "かくすと10になるね。でも商は1けた。いちばん大きい数をたてよう。"
+                : "何をたてますか。（指でかくして見当をつけよう）",
+              type: "input", expect: () => qBig, targetCell: "r0-c4",
+              next: noRedo1 ? 7 : undefined, altExpect: () => q, altNext: 7 },
             { id: 3, text: "次に何をしますか。", type: "action", expect: "kakeru" },
             { id: 4, text: "何と何をかけますか。", type: "click_cells_group", expectGroups: [ ["r1-c0", "r1-c1"], ["r0-c4"] ] },
             { id: 5, text: "かけ算をして、わられる数の下にうつしましょう。", type: "wait" },
@@ -938,6 +1066,70 @@ function generateStates() {
 }
 
 function generateProblem() {
+    // --- 仮の商（見当を立てる練習）---
+    //   ① 2けた÷2けた（商1けた） ② 3けた÷2けた（商1けた） ③ 3けた÷2けた（十の位に商をたてる）
+    if (mode === 'karishou') {
+        const easy = [], hard = [];
+        // target = 今わっている数（③は上2けた）。指でかくした見当から何回下げるかで難しさを分ける
+        const push = (dv, d, qq, target, tens) => {
+            const est = Math.floor(Math.floor(target / 10) / Math.floor(d / 10));
+            // 見当が10になる（例 908÷93）か、2回以上立てなおすものが「むずかしい」
+            ((est >= 10 || est - qq >= 2) ? hard : easy).push([dv, d, qq, target, tens]);
+        };
+        const kind = Math.floor(Math.random() * 3);
+        for (let d = 12; d <= (kind === 0 ? 44 : 99); d++) {
+            if (d % 10 === 0) continue;          // 一の位が0だと「大きくみる」ヒントが意味をなさない
+            if (kind === 0) {                    // ① 2けた÷2けた
+                for (let dv = 20; dv <= 89; dv++) {
+                    if (dv % 10 === 0) continue;
+                    const qq = Math.floor(dv / d);
+                    if (qq < 2 || qq > 9) continue;
+                    push(dv, d, qq, dv, false);
+                }
+            } else if (kind === 1) {             // ② 3けた÷2けた（商1けた）
+                for (let dv = 100; dv <= 989; dv++) {
+                    if (dv % 10 === 0) continue;
+                    const qq = Math.floor(dv / d);
+                    if (qq < 2 || qq > 9) continue;
+                    push(dv, d, qq, dv, false);
+                }
+            } else {                             // ③ 3けた÷2けた（十の位に商をたてる）
+                for (let dv = 100; dv <= 999; dv++) {
+                    const qq = Math.floor(dv / d);
+                    if (qq < 10 || qq > 99) continue;   // 商が2けた＝十の位から立つ
+                    const target = Math.floor(dv / 10); // 上2けた
+                    if (target % 10 === 0) continue;    // 「大きくみる」ヒントが効くように
+                    push(dv, d, Math.floor(target / d), target, true);
+                }
+            }
+        }
+        let arr = (kariLevel === 'easy') ? easy
+                : (kariLevel === 'hard') ? hard
+                : (Math.random() < 0.5 ? easy : hard);
+        if (!arr.length) arr = easy.concat(hard);
+        const picked = arr[Math.floor(Math.random() * arr.length)];
+        dividend = picked[0];
+        divisor  = picked[1];
+        q        = picked[2];
+        const target = picked[3], tens = picked[4];
+        sub1     = q * divisor;
+        // けた数に合わせた配置
+        const dvCols = (dividend >= 100) ? [2, 3, 4] : [2, 3];
+        const targetCols = tens ? [2, 3] : dvCols;
+        kariLay = {
+            divCols: [0, 1],
+            dvCols: dvCols,                 // 画面に書くわられる数
+            targetCols: targetCols,         // 今わっている数（ヒントと線の対象）
+            onesCol: targetCols[targetCols.length - 1],
+            qCell: 'r0-c' + targetCols[targetCols.length - 1],
+            target: target,
+            tens: tens
+        };
+        kariTries = 0;
+        kariHint = null;
+        return;
+    }
+
     // --- 横式（何十÷何十・何百÷何十など。商1けた）---
     // わられる数・わる数の一の位「0」を指でかくすと、簡単なわり算に等しい。
     // 2けた・3けたのわられる数どちらも出す。あまりあり／わりきれ 両方。
@@ -984,26 +1176,32 @@ function generateProblem() {
     // --- 筆算６（3けた÷3けた・商1けた・見当(q+1)で1回立てなおし）---
     if (mode === '3digit_div3') {
         // 見当は指かくしの floor(わられる数の百の位 / わる数の百の位)。見当＝正しい商+1 の問題を出す。
-        const pool = {};
+        const pool = {};       // 見当＝正しい商+1（立てなおし1回）
+        const poolExact = {};  // 見当がそのまま当たる（立てなおしなし）
         for (let d = 100; d <= 499; d++) {
             const vh = Math.floor(d / 100);
             for (let dv = 100; dv <= 999; dv++) {
                 const qq = Math.floor(dv / d);
-                if (qq < 2 || qq > 8) continue;          // 商1けた(2~8)、見当q+1が1桁
+                if (qq < 2 || qq > 9) continue;          // 商1けた
                 const est = Math.floor(Math.floor(dv / 100) / vh);
-                if (est === qq + 1 && est <= 9 && (qq + 1) * d <= 999) {
+                if (est === qq) {
+                    (poolExact[qq] = poolExact[qq] || []).push([dv, d, qq]);
+                } else if (qq <= 8 && est === qq + 1 && est <= 9 && (qq + 1) * d <= 999) {
                     (pool[qq] = pool[qq] || []).push([dv, d, qq]);
                 }
             }
         }
-        const keys = Object.keys(pool);
+        // 3回に1回くらい「立てなおしなし」を出す
+        noRedo1 = (Math.random() < 0.3) && Object.keys(poolExact).length > 0;
+        const src = noRedo1 ? poolExact : pool;
+        const keys = Object.keys(src);
         const k = keys[Math.floor(Math.random() * keys.length)];
-        const arr = pool[k];
+        const arr = src[k];
         const picked = arr[Math.floor(Math.random() * arr.length)];
         dividend = picked[0];
         divisor  = picked[1];
         q        = picked[2];        // 正しい商
-        qBig     = q + 1;            // 見当（大きすぎ）
+        qBig     = noRedo1 ? q : q + 1;  // 見当（立てなおしなしのときは商と同じ）
         sub1     = q * divisor;      // 正しい積
         sub1Big  = qBig * divisor;   // 見当の積（わられる数を超える）
         return;
@@ -1012,7 +1210,8 @@ function generateProblem() {
     // --- 筆算５（3けた÷2けた・商2けた＝十の位から立つ・各けたで✗→立てなおし1回）---
     if (mode === '3digit_div2') {
         // 見当は指かくしの floor(先頭のけた / わる数の十の位)。両けたとも 見当＝正しい商+1 になる問題を出す。
-        const pool = {};
+        // 十の位・一の位それぞれ「見当がそのまま当たる(0)／1大きい(1)」の4通りに分けて用意する
+        const pools = { '11': {}, '10': {}, '01': {}, '00': {} };
         for (let d = 12; d <= 49; d++) {
             const dt = Math.floor(d / 10);
             if (dt < 2) continue;                 // わる数の十の位≥2（十の位1だと見当が大きく外れる）
@@ -1027,14 +1226,27 @@ function generateProblem() {
                 if (rr1 >= 10) continue;           // 中間は2けた
                 const e1 = Math.floor(dd1 / dt);   // 見当1
                 const e2 = Math.floor(rr1 / dt);   // 見当2
-                if (e1 === a + 1 && e2 === b + 1 && e1 <= 9 && e2 <= 9) {
-                    (pool[a] = pool[a] || []).push([dv, d, qq]);
-                }
+                if (e1 > 9 || e2 > 9) continue;
+                const k1 = (e1 === a) ? 0 : (e1 === a + 1 ? 1 : -1);
+                const k2 = (e2 === b) ? 0 : (e2 === b + 1 ? 1 : -1);
+                if (k1 < 0 || k2 < 0) continue;
+                const bucket = pools[`${k1}${k2}`];
+                (bucket[a] = bucket[a] || []).push([dv, d, qq]);
             }
         }
-        const keys = Object.keys(pool);
+        // 両方立てなおし ≒4割、十の位だけ／一の位だけ／立てなおしなし が各2割
+        const rnd = Math.random();
+        const order = rnd < 0.40 ? ['11', '10', '01', '00']
+                    : rnd < 0.60 ? ['10', '11', '01', '00']
+                    : rnd < 0.80 ? ['01', '11', '10', '00']
+                    :              ['00', '11', '10', '01'];
+        const kind = order.find(k => Object.keys(pools[k]).length > 0) || '11';
+        noRedo1 = (kind[0] === '0');
+        noRedo2 = (kind[1] === '0');
+        const bucket = pools[kind];
+        const keys = Object.keys(bucket);
         const a = keys[Math.floor(Math.random() * keys.length)];
-        const arr = pool[a];
+        const arr = bucket[a];
         const picked = arr[Math.floor(Math.random() * arr.length)];
         dividend = picked[0];
         divisor  = picked[1];
@@ -1043,8 +1255,8 @@ function generateProblem() {
         q2       = q % 10;
         sub1     = q1 * divisor;         // 積1（正しい）
         sub2     = q2 * divisor;         // 積2（正しい）
-        est1     = q1 + 1;               // 見当1（大きすぎ）
-        est2     = q2 + 1;               // 見当2（大きすぎ）
+        est1     = noRedo1 ? q1 : q1 + 1; // 見当1（立てなおしなしなら商と同じ）
+        est2     = noRedo2 ? q2 : q2 + 1; // 見当2
         return;
     }
 
@@ -1052,25 +1264,40 @@ function generateProblem() {
     if (mode === '3digit_div1') {
         // 条件: わられる数3桁、わる数2桁(十の位2~4)、商1桁(一の位に立つ)、
         //       見当 floor(上2けた/十の位) が 本当の商+1（例 153÷24：15÷2=7→6）。あまり可。
-        const pool = {};
+        const pool = {};       // 見当＝正しい商+1（立てなおし1回）
+        const poolOver = {};   // 見当が10以上（例 408÷46：40÷4＝10 → 9をたてる → 大きすぎ → 8）
+        const poolExact = {};  // 見当がそのまま当たる（立てなおしなし）
         for (let d = 20; d <= 49; d++) {
             for (let dv = 100; dv <= 999; dv++) {
                 const qq = Math.floor(dv / d);
-                if (qq < 2 || qq > 8) continue;      // 商1けた(2~8)、見当q+1が1桁
+                if (qq < 2 || qq > 9) continue;      // 商1けた
                 const est = Math.floor(Math.floor(dv / 10) / Math.floor(d / 10));
-                if (est === qq + 1 && est <= 9) {
+                if (est === qq) {
+                    (poolExact[qq] = poolExact[qq] || []).push([dv, d, qq]);
+                } else if (qq <= 8 && est === qq + 1) {
                     (pool[qq] = pool[qq] || []).push([dv, d, qq]);
+                } else if (qq === 8 && est >= 10) {
+                    // 指でかくすと10（以上）→「1けたでいちばん大きい9」をたてる → 大きすぎて8に直す
+                    // qq===8 に限ると qBig=9 になり、立てなおし1回の流れがそのまま使える
+                    (poolOver[d] = poolOver[d] || []).push([dv, d, qq]);
                 }
             }
         }
-        const qKeys = Object.keys(pool);
-        const chosenQ = qKeys[Math.floor(Math.random() * qKeys.length)];
-        const arr = pool[chosenQ];
+        // 出題の種類：立てなおしなし ≒1/4、見当が10になる ≒1/4、のこりは見当が1大きい
+        const rnd = Math.random();
+        let src;
+        noRedo1 = false; estOver = false;
+        if (rnd < 0.25 && Object.keys(poolExact).length) { src = poolExact; noRedo1 = true; }
+        else if (rnd < 0.50 && Object.keys(poolOver).length) { src = poolOver; estOver = true; }
+        else { src = pool; }
+        const srcKeys = Object.keys(src);
+        const chosenKey = srcKeys[Math.floor(Math.random() * srcKeys.length)];
+        const arr = src[chosenKey];
         const picked = arr[Math.floor(Math.random() * arr.length)];
         dividend = picked[0];
         divisor  = picked[1];
         q        = picked[2];        // 正しい商
-        qBig     = q + 1;            // 最初に立ててしまう見当（大きすぎ）
+        qBig     = noRedo1 ? q : q + 1;  // 最初に立ててしまう見当（立てなおしなしのときは商と同じ）
         sub1     = q * divisor;      // 正しい積
         sub1Big  = qBig * divisor;   // 見当の積（わられる数を超える）
         return;
@@ -1250,11 +1477,133 @@ function playSound(type) {
 
 // 答えの表示文言（２けたでわる①はあまりがあれば併記）
 function answerText() {
+    if (mode === 'karishou') {
+        const rem = kariLay.target - q * divisor;
+        if (kariLay.tens) return `十の位は（ ${q} ）　のこり（ ${rem} ）`;
+        return rem > 0 ? `答え（ ${q} ）あまり（ ${rem} ）` : `答え（ ${q} ）`;
+    }
     if (mode === 'yokoshiki' || mode === '2digit_div' || mode === '2digit_div2' || mode === '2digit_div3' || mode === '3digit_div1' || mode === '3digit_div2' || mode === '3digit_div3') {
         const rem = dividend - q * divisor;
         if (rem > 0) return `答え（ ${q} ）あまり（ ${rem} ）`;
     }
     return `答え（ ${q} ）`;
+}
+
+// ===== 仮の商タブ =====
+const roundUp10 = n => Math.ceil(n / 10) * 10;
+
+// 「大きくみた数」を、元の数と同じマスの中に赤で書く（元の数には薄い赤線を引く）
+function showRoundUp(cols, num) {
+    const first = document.getElementById(`cell-r1-c${cols[0]}`);
+    if (!first) return;
+    // 数字にかぶる赤い線（左右12pxずつ空けるので、となりの数とはつながらない）
+    const line = document.createElement('span');
+    line.className = 'round-strike fade-in';
+    line.style.width = `calc(${cols.length * 100}% - 24px)`;
+    first.appendChild(line);
+    const sp = document.createElement('span');
+    sp.className = 'round-up fade-in';
+    sp.style.width = (cols.length * 100) + '%';
+    String(num).split('').forEach(ch => {
+        const d = document.createElement('span');
+        d.innerText = ch;
+        sp.appendChild(d);
+    });
+    first.appendChild(sp);
+}
+
+function clearKariHint() {
+    document.querySelectorAll('.finger-cover').forEach(el => el.remove());
+    document.querySelectorAll('.round-up').forEach(el => el.remove());
+    document.querySelectorAll('.round-strike').forEach(el => el.remove());
+    document.querySelectorAll('.kari-btn').forEach(b => b.classList.remove('on'));
+    kariHint = null;
+}
+
+// ヒントは1種類だけ。指かくしと「大きくみる」は同時にはつかない
+function setKariHint(kind) {
+    clearKariHint();
+    if (!kind) return;
+    kariHint = kind;
+    if (kind === 'kakusu') {
+        addFingerCover('r1-c1');                        // わる数の一の位
+        addFingerCover(`r1-c${kariLay.onesCol}`);       // わられる数の一の位
+        document.getElementById('btn-kakusu').classList.add('on');
+    } else if (kind === 'divup') {
+        showRoundUp(kariLay.divCols, roundUp10(divisor));
+        document.getElementById('btn-divup').classList.add('on');
+    } else if (kind === 'bothup') {
+        // わられる数を大きくするときは、わる数も大きくしたまま
+        showRoundUp(kariLay.divCols, roundUp10(divisor));
+        showRoundUp(kariLay.targetCols, roundUp10(kariLay.target));
+        document.getElementById('btn-divup').classList.add('on');
+        document.getElementById('btn-bothup').classList.add('on');
+    }
+}
+
+function kariMsg(text, ok) {
+    document.getElementById('instruction').innerHTML =
+        `<span class="${ok ? 'kari-ok' : 'kari-msg'}">${text}</span>`;
+}
+
+// 数を右づめで書く（一の位の列を指定）
+function writeRight(row, onesCol, num) {
+    String(num).split('').reverse().forEach((ch, i) => {
+        const el = document.getElementById(`cell-r${row}-c${onesCol - i}`);
+        if (el) el.innerText = ch;
+    });
+}
+
+// 立てた仮の商でかけ算 → 積をわられる数の下へ → はんてい
+function kariTry(val) {
+    if (kariBusy) return;
+    kariBusy = true;
+    clearKariHint();
+    const prod = divisor * val;
+    const rem = kariLay.target - prod;
+    document.getElementById('cell-' + kariLay.qCell).innerText = val;
+    playSound('click');
+    document.getElementById('instruction').innerText = `${divisor} × ${val} をしてみよう。`;
+    renderMultBox(val, prod, () => {
+        if (rem < 0) {
+            // ひけない＝商が大きすぎる
+            kariMsg('商が大きいよ。', false);
+            playSound('wrong');
+            kariTries++; errorStats.tateru++;
+            setTimeout(kariAgain, 1900);
+            return;
+        }
+        writeRight(3, kariLay.onesCol, rem);   // ひき算の答え（あまり）
+        setTimeout(() => {
+            if (rem >= divisor) {
+                kariMsg('わる数よりも大きいよ。', false);
+                playSound('wrong');
+                kariTries++; errorStats.tateru++;
+                setTimeout(kariAgain, 1900);
+            } else {
+                kariBusy = false;
+                state = 1;
+                updateUI();   // ぴったり → はなまる
+            }
+        }, 600);
+    }, 2, kariLay.onesCol, 0, 0.55);
+}
+
+// もう一度立てなおせるように、書いたものを消す
+function kariAgain() {
+    clearMultBox();
+    for (let c = 1; c <= kariLay.onesCol; c++) {
+        const el2 = document.getElementById(`cell-r2-c${c}`);
+        const el3 = document.getElementById(`cell-r3-c${c}`);
+        if (el3) el3.innerText = '';
+        if (!el2) continue;
+        el2.innerText = '';
+        if (kariLay.targetCols.includes(c)) el2.classList.add('border-hidden');   // ひき算の線にもどす
+        else el2.classList.remove('border-bottom', 'border-hidden');              // はみ出した百の位
+    }
+    document.getElementById('cell-' + kariLay.qCell).innerHTML = '<div class="box-input"></div>';
+    document.getElementById('instruction').innerText = 'もう一度、仮の商をたててみよう。';
+    kariBusy = false;
 }
 
 // 指でかくすカバーを対象セルに重ねる
@@ -1315,12 +1664,14 @@ function renderYokoSub(onDone) {
 // あいたスペースに「わる数 × 商 ＝ 積」のかけ算の筆算を、順番に少しずつ出す
 // mult: かける数（商）, product: 積, afterDrop: 積をおろした後に呼ぶ処理（任意）
 // boxRow: 補助計算を書き始める行（省略時 0。筆算5の一の位では 4 にして1行あけて下に書く）
-function renderMultBox(mult, product, afterDrop, dropRow, dropOnesCol, boxRow) {
+function renderMultBox(mult, product, afterDrop, dropRow, dropOnesCol, boxRow, speed) {
     if (mult === undefined) mult = q;
     if (product === undefined) product = sub1;
     if (dropRow === undefined) dropRow = 2;          // おろす行（筆算1〜3は r2）
     if (dropOnesCol === undefined) dropOnesCol = 3;  // おろす一の位の列（筆算1〜3は c3）
     if (boxRow === undefined) boxRow = 0;            // 補助計算の開始行
+    const sp = (speed === undefined) ? 1 : speed;    // 表示の速さ（仮の商タブは何回も試すので速め）
+    const T = ms => Math.round(ms * sp);
     const bR0 = boxRow, bR1 = boxRow + 1, bR2 = boxRow + 2;
     const dt = Math.floor(divisor / 10), du = divisor % 10;
     const big = product >= 100;                 // 積が3けた（見当が大きすぎる時に起こる）
@@ -1337,18 +1688,18 @@ function renderMultBox(mult, product, afterDrop, dropRow, dropOnesCol, boxRow) {
     [`r${bR1}-c6`, `r${bR1}-c7`, `r${bR1}-c8`].forEach(id =>
         document.getElementById('cell-' + id).classList.add('border-bottom', 'border-hidden'));
     // ② ×と商（かける数）
-    setTimeout(() => { show(`r${bR1}-c6`, '×'); show(`r${bR1}-c8`, mult); }, 600);
+    setTimeout(() => { show(`r${bR1}-c6`, '×'); show(`r${bR1}-c8`, mult); }, T(600));
     // ③ かけ算の線を見せる
     setTimeout(() => {
         [`r${bR1}-c6`, `r${bR1}-c7`, `r${bR1}-c8`].forEach(id =>
             document.getElementById('cell-' + id).classList.remove('border-hidden'));
-    }, 1200);
+    }, T(1200));
     // ④ 積（右づめ：一の位=c8。3けたなら百の位を c6 に）
     setTimeout(() => {
         if (big) show(`r${bR2}-c6`, p3);
         else document.getElementById(`cell-r${bR2}-c6`).innerText = '';
         show(`r${bR2}-c7`, p2); show(`r${bR2}-c8`, p1);
-    }, 1800);
+    }, T(1800));
     // ⑤ 積が出た1秒後に、わり算の筆算にも積をおろす（右づめ。3けたなら一つ左にはみ出す）
     setTimeout(() => {
         const cOne = dropOnesCol, cTen = dropOnesCol - 1, cHun = dropOnesCol - 2;
@@ -1363,8 +1714,8 @@ function renderMultBox(mult, product, afterDrop, dropRow, dropOnesCol, boxRow) {
         show(`r${dropRow}-c${cTen}`, p2); show(`r${dropRow}-c${cOne}`, p1);
         document.getElementById(`cell-r${dropRow}-c${cTen}`).classList.remove('border-hidden');
         document.getElementById(`cell-r${dropRow}-c${cOne}`).classList.remove('border-hidden');
-        if (afterDrop) setTimeout(afterDrop, 500);
-    }, 2800);
+        if (afterDrop) setTimeout(afterDrop, T(500));
+    }, T(2800));
 }
 
 // かけ算の筆算（右側）を消す。boxRow を指定するとその位置の補助計算だけ消す
@@ -1543,6 +1894,20 @@ function updateUI() {
                 });
             }
             document.getElementById('instruction').innerText = answerText();
+            if (!document.getElementById('hanamaru').classList.contains('show')) {
+                showClearEffect();
+            }
+        }
+        return;
+    }
+
+    // ===== 仮の商：入力箱を出すだけ。はんていは kariTry() が行う =====
+    if (mode === 'karishou') {
+        if (s.type === 'input') {
+            const el = document.getElementById('cell-' + kariLay.qCell);
+            if (!el.querySelector('.box-input')) el.innerHTML = '<div class="box-input"></div>';
+        }
+        if (s.type === 'finish') {
             if (!document.getElementById('hanamaru').classList.contains('show')) {
                 showClearEffect();
             }
@@ -2210,7 +2575,9 @@ document.querySelectorAll('.cell').forEach(cell => {
                 playSound('click');
             }
             if (s.expect.every(id => selectedCells.includes(id))) {
+                const cur = state;
                 setTimeout(() => {
+                    if (state !== cur) return; // すでに次へ進んでいたら二重に進めない
                     state++;
                     updateUI();
                 }, 300);
@@ -2264,7 +2631,9 @@ document.querySelectorAll('.cell').forEach(cell => {
             });
 
             if (isCorrect) {
+                const cur = state;
                 setTimeout(() => {
+                    if (state !== cur) return; // すでに次へ進んでいたら二重に進めない
                     state++;
                     updateUI();
                 }, 300);
@@ -2276,12 +2645,18 @@ document.querySelectorAll('.cell').forEach(cell => {
 document.querySelectorAll('.num-btn').forEach(btn => {
     btn.addEventListener('click', () => {
         const s = states[state];
+        if (mode === 'karishou') {
+            // 仮の商：どの数字も「立ててみる」ことができる（正誤はかけ算で確かめる）
+            if (s.type === 'input') kariTry(parseInt(btn.dataset.val, 10));
+            return;
+        }
         if (s.type === 'input') {
             const val = parseInt(btn.dataset.val, 10);
             if (val === s.expect()) {
                 playSound('click');
                 document.getElementById(`cell-${s.targetCell}`).innerText = val;
-                state++;
+                // next が指定されていればそこへ（立てなおしなしの問題で修正の手順を飛ばす）
+                state = (s.next !== undefined) ? s.next : state + 1;
                 updateUI();
             } else if (s.altExpect && val === s.altExpect()) {
                 // 別解（例：筆算2で最初から正しい商）→ 修正を飛ばして指定の状態へ
@@ -2347,6 +2722,26 @@ document.getElementById('btn-tashikame').addEventListener('click', () => {
     }
 });
 
+// --- 仮の商タブの難易度ボタン ---
+document.querySelectorAll('.level-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        kariLevel = btn.dataset.level;
+        document.querySelectorAll('.level-btn').forEach(b => b.classList.toggle('active', b === btn));
+        playSound('click');
+        initGame();   // その難しさの問題を出しなおす
+    });
+});
+
+// --- 仮の商タブのヒントボタン（同時に効くのは1種類だけ） ---
+[['btn-kakusu', 'kakusu'], ['btn-divup', 'divup'], ['btn-bothup', 'bothup']].forEach(([id, kind]) => {
+    document.getElementById(id).addEventListener('click', () => {
+        if (mode !== 'karishou' || kariBusy) return;
+        if (states[state].type !== 'input') return;   // ぴったり合ったあとは効かない
+        playSound('click');
+        setKariHint(kariHint === kind ? null : kind);   // もう一度おすと消える
+    });
+});
+
 document.getElementById('btn-reset').addEventListener('click', initGame);
 
 let currentMode = '2digit_div';
@@ -2384,6 +2779,12 @@ function initGame() {
     const yoko = (mode === 'yokoshiki');
     document.querySelector('.grid').classList.toggle('yoko', yoko);
     document.querySelector('.controls').classList.toggle('yoko-mode', yoko);
+    // 仮の商モード：たてる〜おろすの代わりにヒントボタンを出す。上はチュートリアルでなく難易度ボタン
+    document.querySelector('.controls').classList.toggle('kari-mode', mode === 'karishou');
+    document.querySelector('.tutorial-wrap').style.display = (mode === 'karishou') ? 'none' : 'flex';
+    document.getElementById('kari-level').style.display = (mode === 'karishou') ? 'flex' : 'none';
+    kariBusy = false; kariHint = null;
+    document.querySelectorAll('.kari-btn').forEach(b => b.classList.remove('on'));
     
     // 罫線の初期設定（商の下線：c1, c2 の下）
     if (mode === '3digit1') {
@@ -2397,6 +2798,10 @@ function initGame() {
         [3, 4, 5].forEach(c => document.getElementById(`cell-r0-c${c}`).classList.add('border-bottom'));
         [3, 4].forEach(c => document.getElementById(`cell-r2-c${c}`).classList.add('border-bottom', 'border-hidden'));
         [4, 5].forEach(c => document.getElementById(`cell-r4-c${c}`).classList.add('border-bottom', 'border-hidden'));
+    } else if (mode === 'karishou') {
+        // 仮の商：わられる数のけた数に合わせて、上線とひき算の線を引く
+        kariLay.dvCols.forEach(c => document.getElementById(`cell-r0-c${c}`).classList.add('border-bottom'));
+        kariLay.targetCols.forEach(c => document.getElementById(`cell-r2-c${c}`).classList.add('border-bottom', 'border-hidden'));
     } else if (mode === '2digit_div' || mode === '2digit_div2' || mode === '2digit_div3') {
         // ２けたでわる：商の下線 r0-c2,c3／ひき算の線 r2-c2,c3
         [2, 3].forEach(c => document.getElementById(`cell-r0-c${c}`).classList.add('border-bottom'));
@@ -2427,8 +2832,9 @@ function initGame() {
 
     // 「）」の位置：わられる数が始まるセルの左端に付ける
     const isYoko = (mode === 'yokoshiki');
-    const isTwoDigitDiv = (mode === '2digit_div' || mode === '2digit_div2' || mode === '2digit_div3');
-    const is3d2dDiv = (mode === '3digit_div1' || mode === '3digit_div2');
+    const kari2 = (mode === 'karishou' && dividend < 100);
+    const isTwoDigitDiv = (mode === '2digit_div' || mode === '2digit_div2' || mode === '2digit_div3' || kari2);
+    const is3d2dDiv = (mode === '3digit_div1' || mode === '3digit_div2' || (mode === 'karishou' && !kari2));
     const is3d3dDiv = (mode === '3digit_div3');
     if (!isYoko) {
         document.getElementById((isTwoDigitDiv || is3d2dDiv) ? 'cell-r1-c2' : (is3d3dDiv ? 'cell-r1-c3' : 'cell-r1-c3')).classList.add('paren-left');
@@ -2475,7 +2881,13 @@ function initGame() {
     document.getElementById('cell-r1-c4').innerText = dividend % 10;
     }
     }
-    
+
+    // 仮の商タブ：赤字が出たときに数字が動かないよう、最初から少し上げた位置にしておく
+    if (mode === 'karishou') {
+        kariLay.divCols.concat(kariLay.dvCols).forEach(c =>
+            document.getElementById(`cell-r1-c${c}`).classList.add('round-shift'));
+    }
+
     updateUI();
 }
 
