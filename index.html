@@ -1,0 +1,2502 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>わり算の筆算の考え方</title>
+<link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.5.1/dist/confetti.browser.min.js"></script>
+<style>
+    :root {
+        --primary-color: #fff500;
+        --hint-color: #4caf50;
+        --wrong-color: #ff5252;
+        --cell-size: 50px;
+    }
+
+    body {
+        min-height: 100vh;
+        margin: 0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        background: linear-gradient(135deg, #e0c3fc 0%, #8ec5fc 100%);
+        font-family: 'M PLUS Rounded 1c', sans-serif;
+        touch-action: manipulation; /* ダブルタップズーム防止 */
+        overflow: hidden; /* スマホでの不意なスクロールを防止 */
+    }
+
+    #app-container {
+        background: rgba(255, 255, 255, 0.8);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border-radius: 20px;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+        padding: 20px;
+        width: 98%;
+        max-width: 1040px; /* 10列グリッド＋右側にボタン・テンキー */
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+    }
+
+    .settings {
+        display: flex;
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 10px 15px;
+        background: #fff;
+        padding: 10px 20px;
+        border-radius: 12px;
+        box-shadow: inset 0 2px 5px rgba(0,0,0,0.05);
+        margin-bottom: 5px;
+    }
+    /* タブ（筆算1 / 筆算2） */
+    .tab-btn {
+        font-family: inherit;
+        font-size: 1.15rem;
+        font-weight: bold;
+        color: #6a5acd;
+        background: #eef0ff;
+        border: 2px solid #c9cdf5;
+        border-radius: 12px;
+        padding: 8px 26px;
+        cursor: pointer;
+        transition: all 0.15s;
+        box-shadow: 0 2px 0 #c9cdf5;
+    }
+    .tab-btn:hover { background: #e2e6ff; }
+    .tab-btn.active {
+        color: #fff;
+        background: #6a5acd;
+        border-color: #5a4abd;
+        box-shadow: 0 3px 0 #4a3aad;
+    }
+    /* 立てるところに残る、うっすらとした最初の数字 */
+    .ghost-num {
+        color: #f0a030;
+        opacity: 0.4;
+        font-weight: bold;
+    }
+    /* 大きすぎたときの✗ */
+    .x-mark {
+        color: #e53935;
+        font-weight: bold;
+        font-size: 3.2rem;
+        line-height: 1;
+        animation: xPop 0.3s ease-out;
+    }
+    @keyframes xPop {
+        from { transform: scale(0.3); opacity: 0; }
+        to   { transform: scale(1); opacity: 1; }
+    }
+    
+    .settings label {
+        font-size: 1.1rem;
+        font-weight: bold;
+        color: #333;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+    }
+
+    /* 追加機能のスタイル */
+    .tutorial-wrap {
+        display: flex;
+        justify-content: center;
+        margin-top: -15px;
+        margin-bottom: 5px;
+    }
+    .tutorial-wrap label {
+        font-size: 1rem;
+        font-weight: bold;
+        color: #555;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        background: #fff;
+        padding: 5px 20px;
+        border-radius: 12px;
+        box-shadow: inset 0 2px 5px rgba(0,0,0,0.05);
+    }
+    .guide-arrow {
+        position: absolute;
+        top: -35px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 2rem;
+        color: #ff9800;
+        pointer-events: none;
+        animation: bounceDown 1s infinite;
+        z-index: 50;
+        text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+    @keyframes bounceDown {
+        0%, 100% { transform: translate(-50%, 0); }
+        50% { transform: translate(-50%, 10px); }
+    }
+    #combo-count {
+        display: inline-block;
+        transition: transform 0.2s;
+    }
+
+    .header {
+        text-align: center;
+        font-size: 1.4rem;
+        font-weight: bold;
+        color: #333;
+        min-height: 3rem;
+        background: #e1f5fe;
+        border-radius: 12px;
+        padding: 10px 20px;
+        box-shadow: inset 0 2px 5px rgba(0,0,0,0.05);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: opacity 0.3s;
+    }
+
+    .main-content {
+        display: flex;
+        flex-direction: row;
+        gap: 40px;
+        justify-content: flex-start;
+        align-items: flex-start;
+    }
+
+    @media (max-width: 600px) {
+        .main-content {
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+        }
+        .header {
+            font-size: 1.1rem;
+            min-height: 2.5rem;
+        }
+    }
+
+    /* マス目エリア */
+    .grid-wrapper {
+        background-color: white;
+        border: 2px solid #00bcd4;
+        border-radius: 8px;
+        padding: 0;
+        position: relative;
+        display: inline-block;
+        box-shadow: inset 0 0 10px rgba(0,188,212,0.2);
+        align-self: flex-start; /* 親の伸縮の影響を受けない */
+    }
+
+    .grid {
+        display: grid;
+        grid-template-columns: repeat(10, var(--cell-size));
+        grid-template-rows: repeat(8, var(--cell-size));
+        gap: 0;
+        /* 背景格子線をgrid自体に描く（セル境界と一致させる） */
+        background-color: white;
+        background-image: 
+            linear-gradient(to right, #b2ebf2 2px, transparent 2px),
+            linear-gradient(to bottom, #b2ebf2 2px, transparent 2px);
+        background-size: var(--cell-size) var(--cell-size);
+        background-position: 0 0;
+        border-radius: 6px;
+    }
+
+    .cell {
+        width: var(--cell-size);
+        height: var(--cell-size);
+        box-sizing: border-box;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        font-size: 2.2rem;
+        font-weight: bold;
+        line-height: 1;
+        color: #333;
+        position: relative;
+        user-select: none;
+        transition: background-color 0.2s, transform 0.2s;
+    }
+
+    /* 記号の微調整 */
+    /* 「）」を .paren-left が付いたセルの左端（前のセルとの境界）に疑似要素で重ねる。
+       どの列にわられる数が始まってもよいよう、クラスで指定する。 */
+    .paren-left {
+        position: relative;
+        overflow: visible;
+    }
+    .paren-left::before {
+        content: ")";
+        position: absolute;
+        left: 0;
+        top: 46%;
+        transform: translate(-50%, -50%) scale(1, 1.25);
+        font-size: 2.2rem;
+        font-weight: bold;
+        line-height: 1;
+        color: #333;
+        pointer-events: none;
+    }
+
+    /* 横式のひき算「−」をセルの左に重ねる（わられる数の下にそろえる） */
+    .minus-left::before {
+        content: "−";
+        position: absolute;
+        left: 3px;
+        top: 50%;
+        transform: translateY(-50%);
+        font-size: 2.2rem;
+        font-weight: bold;
+        line-height: 1;
+        color: #333;
+        pointer-events: none;
+    }
+
+    /* 筆算の線 */
+    .border-bottom { border-bottom: 3px solid #333; }
+    .border-hidden { border-color: transparent; }
+
+    /* 商の下線を少し下げるための調整（r0のどの列でも有効） */
+    [id^="cell-r0-"].border-bottom {
+        border-bottom: none;
+    }
+    [id^="cell-r0-"]::after {
+        content: '';
+        position: absolute;
+        bottom: -8%;
+        left: 0;
+        width: 100%;
+        height: 3px;
+        background-color: #333;
+        display: none;
+        z-index: 10;
+    }
+    [id^="cell-r0-"].border-bottom::after {
+        display: block;
+    }
+
+    /* 指でかくす（一の位を隠す）カバー */
+    .finger-cover {
+        position: absolute;
+        left: 50%;
+        top: 3px;
+        transform: translateX(-50%);
+        width: 42px;
+        height: 79px;
+        background-image: url('data:image/png;base64,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');
+        background-size: contain;
+        background-repeat: no-repeat;
+        background-position: top center;
+        filter: drop-shadow(0 3px 5px rgba(0,0,0,0.3));
+        z-index: 30;
+        pointer-events: none;
+        animation: fingerFade 0.45s ease-out;
+    }
+    @keyframes fingerFade {
+        from { opacity: 0; }
+        to   { opacity: 1; }
+    }
+
+    /* かけ算の筆算を1つずつ出すときのフェード（その場でフェードインのみ） */
+    .fade-in { animation: cellFade 0.4s ease-out; }
+    @keyframes cellFade {
+        from { opacity: 0; }
+        to   { opacity: 1; }
+    }
+
+    /* UI要素 */
+    .controls {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        min-width: 118px;
+    }
+
+    button {
+        font-family: inherit;
+        font-size: 1.2rem;
+        padding: 12px 15px;
+        border: none;
+        border-radius: 10px;
+        background: linear-gradient(145deg, #f0f0f0, #cacaca);
+        box-shadow: 3px 3px 6px rgba(0,0,0,0.1), inset 1px 1px 2px rgba(255,255,255,0.8);
+        cursor: pointer;
+        font-weight: bold;
+        color: #333;
+        transition: transform 0.1s, box-shadow 0.1s, filter 0.2s;
+    }
+
+    button:active {
+        transform: translateY(2px);
+        box-shadow: 1px 1px 2px rgba(0,0,0,0.1);
+    }
+
+    button.action-btn {
+        background: var(--primary-color);
+        border: 2px solid #e6c200;
+        box-shadow: 0 4px 0 #c4a600;
+    }
+    button.action-btn:active {
+        box-shadow: 0 0 0 #c4a600;
+        transform: translateY(4px);
+    }
+
+    button.hint-btn {
+        background: var(--hint-color);
+        color: white;
+        border: 2px solid #388e3c;
+        box-shadow: 0 4px 0 #2e7d32;
+    }
+    button.hint-btn:active {
+        box-shadow: 0 0 0 #2e7d32;
+        transform: translateY(4px);
+    }
+
+    button.reset-btn {
+        background: var(--wrong-color);
+        color: white;
+        border: 2px solid #d50000;
+        box-shadow: 0 4px 0 #b71c1c;
+        margin-top: auto;
+    }
+    button.reset-btn:active {
+        box-shadow: 0 0 0 #b71c1c;
+        transform: translateY(4px);
+    }
+
+    /* ===== 横式タブ用 ===== */
+    /* 追加3列（c10,c11,c12）は通常は隠す。横式のときだけ表示し、グリッドを13列に */
+    [id$="-c10"], [id$="-c11"], [id$="-c12"] { display: none; }
+    .grid.yoko { --cell-size: 46px; grid-template-columns: repeat(13, var(--cell-size)); }
+    .grid.yoko [id$="-c10"], .grid.yoko [id$="-c11"], .grid.yoko [id$="-c12"] { display: flex; }
+
+    /* 横式：式の横の「…」は少し下げて、数字の下のほうにそろえる */
+    .cell.yoko-dots { padding-top: 0.25em; }
+
+    /* ヒントとたしかめを横に並べる行 */
+    .hint-row { display: flex; gap: 8px; }
+    .hint-row > button { flex: 1; }
+    .tashikame-btn {
+        display: none;
+        background: #29b6f6; color: #fff;
+        border: 2px solid #0288d1; box-shadow: 0 4px 0 #0277bd;
+    }
+    .tashikame-btn:active { box-shadow: 0 0 0 #0277bd; transform: translateY(4px); }
+
+    /* 横式モード：たてる〜おろすを消し、たしかめを表示、ヒント行を5行目あたりまで下げる */
+    .controls.yoko-mode { min-width: 150px; }
+    .controls.yoko-mode .action-btn { display: none; }
+    .controls.yoko-mode .tashikame-btn { display: block; }
+    .controls.yoko-mode .hint-row { margin-top: 200px; }
+    .controls.yoko-mode .hint-row > button { font-size: 1.05rem; padding: 12px 6px; }
+
+    /* テンキー */
+    .numpad {
+        /* display: none; を削除し、常にスペースを確保してガタつきを防止します */
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 5px;
+        margin-top: 0;
+        background: #f5f5f5;
+        padding: 10px;
+        border-radius: 10px;
+        box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+        visibility: hidden;
+        opacity: 0;
+        transition: opacity 0.2s;
+        align-content: start;
+        min-width: 160px;
+    }
+    .numpad.visible { 
+        visibility: visible;
+        opacity: 1;
+    }
+    .num-btn {
+        padding: 10px 0;
+        font-size: 1.4rem;
+        background: white;
+        box-shadow: 0 2px 0 #ccc;
+    }
+    .num-btn:active {
+        box-shadow: 0 0 0 #ccc;
+        transform: translateY(2px);
+    }
+
+    @media (max-width: 600px) {
+        .controls {
+            flex-direction: row;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        button { font-size: 1rem; padding: 10px; }
+        button.reset-btn { margin-top: 10px; width: 100%; }
+        
+        /* スマホ画面では横幅が足りないため、従来通り非表示時に詰める挙動にします */
+        .numpad {
+            display: none;
+        }
+        .numpad.visible {
+            display: grid;
+        }
+    }
+
+    /* アニメーション・エフェクト */
+    .shake { animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both; }
+    @keyframes shake {
+        10%, 90% { transform: translate3d(-2px, 0, 0); }
+        20%, 80% { transform: translate3d(4px, 0, 0); }
+        30%, 50%, 70% { transform: translate3d(-6px, 0, 0); }
+        40%, 60% { transform: translate3d(6px, 0, 0); }
+    }
+
+    .hint-glow { animation: glow 1s infinite alternate; }
+    @keyframes glow {
+        from { box-shadow: 0 0 5px #ffeb3b, inset 0 0 5px #ffeb3b; background-color: rgba(255,235,59,0.4); }
+        to { box-shadow: 0 0 15px #ff9800, inset 0 0 15px #ff9800; background-color: rgba(255,152,0,0.7); }
+    }
+
+    .selected {
+        background-color: rgba(33, 150, 243, 0.3);
+        border-radius: 50%;
+    }
+    .selected-group-left {
+        background-color: rgba(33, 150, 243, 0.3);
+        border-radius: 25px 0 0 25px;
+    }
+    .selected-group-mid {
+        background-color: rgba(33, 150, 243, 0.3);
+        border-radius: 0;
+    }
+    .selected-group-right {
+        background-color: rgba(33, 150, 243, 0.3);
+        border-radius: 0 25px 25px 0;
+    }
+
+    .red-text { color: red; }
+    
+    .box-input {
+        border: 3px dashed #ff9800;
+        width: 80%;
+        height: 80%;
+        border-radius: 8px;
+        background: rgba(255, 152, 0, 0.1);
+        box-sizing: border-box;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    /* ドラッグ用 */
+    .draggable-span {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        width: 100%;
+        height: 100%;
+        cursor: grab;
+        touch-action: none;
+        background: rgba(255, 255, 255, 0.9);
+        border-radius: 8px;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        z-index: 100;
+        color: #00bcd4;
+    }
+    .draggable-span:active { cursor: grabbing; }
+
+    /* ポップアップ */
+    #popup {
+        position: absolute;
+        top: 20%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: var(--wrong-color);
+        color: white;
+        padding: 10px 30px;
+        border-radius: 30px;
+        font-size: 1.2rem;
+        font-weight: bold;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.3s;
+        z-index: 1000;
+    }
+    #popup.show { opacity: 1; }
+
+    /* 花丸 */
+    #hanamaru {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%) scale(0);
+        width: 200px;
+        height: 200px;
+        pointer-events: none;
+        opacity: 0;
+        transition: transform 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.6s;
+        background: url('https://github.com/byakusen/hanamaru/blob/main/hanamaru2.png?raw=true') no-repeat center center;
+        background-size: contain;
+        z-index: 500;
+    }
+    #hanamaru.show {
+        transform: translate(-50%, -50%) scale(1);
+        opacity: 1;
+    }
+</style>
+</head>
+<body>
+
+<div id="app-container">
+    <div style="display: flex; justify-content: flex-start; align-items: center; margin-bottom: -10px; z-index: 10;">
+        <div style="font-weight: bold; color: #ff5722; font-size: 1.2rem; background: rgba(255,255,255,0.9); padding: 5px 15px; border-radius: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+            🔥 連続正解: <span id="combo-count">0</span>
+        </div>
+    </div>
+
+    <div class="settings" id="mode-tabs">
+        <button class="tab-btn" data-mode="yokoshiki">横式</button>
+        <button class="tab-btn active" data-mode="2digit_div">筆算１</button>
+        <button class="tab-btn" data-mode="2digit_div2">筆算２</button>
+        <button class="tab-btn" data-mode="2digit_div3">筆算３</button>
+        <button class="tab-btn" data-mode="3digit_div1">筆算４</button>
+        <button class="tab-btn" data-mode="3digit_div2">筆算５</button>
+        <button class="tab-btn" data-mode="3digit_div3">筆算６</button>
+    </div>
+    
+    <div class="tutorial-wrap">
+        <label><input type="checkbox" id="tutorial-mode"> チュートリアル（自動ヒント）</label>
+    </div>
+    
+    <div id="instruction" class="header">読み込み中...</div>
+    
+    <div class="main-content">
+        <div class="grid-wrapper">
+            <div class="grid">
+                <!-- Row 0 (商) -->
+                <div class="cell" id="cell-r0-c0"></div>
+                <div class="cell" id="cell-r0-c1"></div>
+                <div class="cell" id="cell-r0-c2"></div>
+                <div class="cell" id="cell-r0-c3"></div>
+                <div class="cell" id="cell-r0-c4"></div>
+                <div class="cell" id="cell-r0-c5"></div>
+                <div class="cell" id="cell-r0-c6"></div>
+                <div class="cell" id="cell-r0-c7"></div>
+                <div class="cell" id="cell-r0-c8"></div>
+                <div class="cell" id="cell-r0-c9"></div>
+                <!-- Row 1 (問題：わる数 ） わられる数) -->
+                <div class="cell" id="cell-r1-c0"></div>
+                <div class="cell" id="cell-r1-c1"></div>
+                <div class="cell" id="cell-r1-c2"></div>
+                <div class="cell" id="cell-r1-c3"></div>
+                <div class="cell" id="cell-r1-c4"></div>
+                <div class="cell" id="cell-r1-c5"></div>
+                <div class="cell" id="cell-r1-c6"></div>
+                <div class="cell" id="cell-r1-c7"></div>
+                <div class="cell" id="cell-r1-c8"></div>
+                <div class="cell" id="cell-r1-c9"></div>
+                <!-- Row 2 (積1) -->
+                <div class="cell" id="cell-r2-c0"></div>
+                <div class="cell" id="cell-r2-c1"></div>
+                <div class="cell" id="cell-r2-c2"></div>
+                <div class="cell" id="cell-r2-c3"></div>
+                <div class="cell" id="cell-r2-c4"></div>
+                <div class="cell" id="cell-r2-c5"></div>
+                <div class="cell" id="cell-r2-c6"></div>
+                <div class="cell" id="cell-r2-c7"></div>
+                <div class="cell" id="cell-r2-c8"></div>
+                <div class="cell" id="cell-r2-c9"></div>
+                <!-- Row 3 (差1・おろした数) -->
+                <div class="cell" id="cell-r3-c0"></div>
+                <div class="cell" id="cell-r3-c1"></div>
+                <div class="cell" id="cell-r3-c2"></div>
+                <div class="cell" id="cell-r3-c3"></div>
+                <div class="cell" id="cell-r3-c4"></div>
+                <div class="cell" id="cell-r3-c5"></div>
+                <div class="cell" id="cell-r3-c6"></div>
+                <div class="cell" id="cell-r3-c7"></div>
+                <div class="cell" id="cell-r3-c8"></div>
+                <div class="cell" id="cell-r3-c9"></div>
+                <!-- Row 4 (積2) -->
+                <div class="cell" id="cell-r4-c0"></div>
+                <div class="cell" id="cell-r4-c1"></div>
+                <div class="cell" id="cell-r4-c2"></div>
+                <div class="cell" id="cell-r4-c3"></div>
+                <div class="cell" id="cell-r4-c4"></div>
+                <div class="cell" id="cell-r4-c5"></div>
+                <div class="cell" id="cell-r4-c6"></div>
+                <div class="cell" id="cell-r4-c7"></div>
+                <div class="cell" id="cell-r4-c8"></div>
+                <div class="cell" id="cell-r4-c9"></div>
+                <!-- Row 5 (差2・おろした数) -->
+                <div class="cell" id="cell-r5-c0"></div>
+                <div class="cell" id="cell-r5-c1"></div>
+                <div class="cell" id="cell-r5-c2"></div>
+                <div class="cell" id="cell-r5-c3"></div>
+                <div class="cell" id="cell-r5-c4"></div>
+                <div class="cell" id="cell-r5-c5"></div>
+                <div class="cell" id="cell-r5-c6"></div>
+                <div class="cell" id="cell-r5-c7"></div>
+                <div class="cell" id="cell-r5-c8"></div>
+                <div class="cell" id="cell-r5-c9"></div>
+                <!-- Row 6 (積3) -->
+                <div class="cell" id="cell-r6-c0"></div>
+                <div class="cell" id="cell-r6-c1"></div>
+                <div class="cell" id="cell-r6-c2"></div>
+                <div class="cell" id="cell-r6-c3"></div>
+                <div class="cell" id="cell-r6-c4"></div>
+                <div class="cell" id="cell-r6-c5"></div>
+                <div class="cell" id="cell-r6-c6"></div>
+                <div class="cell" id="cell-r6-c7"></div>
+                <div class="cell" id="cell-r6-c8"></div>
+                <div class="cell" id="cell-r6-c9"></div>
+                <!-- Row 7 (あまり) -->
+                <div class="cell" id="cell-r7-c0"></div>
+                <div class="cell" id="cell-r7-c1"></div>
+                <div class="cell" id="cell-r7-c2"></div>
+                <div class="cell" id="cell-r7-c3"></div>
+                <div class="cell" id="cell-r7-c4"></div>
+                <div class="cell" id="cell-r7-c5"></div>
+                <div class="cell" id="cell-r7-c6"></div>
+                <div class="cell" id="cell-r7-c7"></div>
+                <div class="cell" id="cell-r7-c8"></div>
+                <div class="cell" id="cell-r7-c9"></div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button id="btn-tateru" class="action-btn">たてる</button>
+            <button id="btn-kakeru" class="action-btn">かける</button>
+            <button id="btn-hiku" class="action-btn">ひく</button>
+            <button id="btn-orosu" class="action-btn">おろす</button>
+            <div class="hint-row">
+                <button id="btn-hint" class="hint-btn">ヒント</button>
+                <button id="btn-tashikame" class="tashikame-btn">たしかめ</button>
+            </div>
+            <button id="btn-reset" class="reset-btn">もう一度</button>
+        </div>
+        
+        <div style="position: relative;">
+            <div id="numpad" class="numpad">
+                <button class="num-btn" data-val="1">1</button>
+                <button class="num-btn" data-val="2">2</button>
+                <button class="num-btn" data-val="3">3</button>
+                <button class="num-btn" data-val="4">4</button>
+                <button class="num-btn" data-val="5">5</button>
+                <button class="num-btn" data-val="6">6</button>
+                <button class="num-btn" data-val="7">7</button>
+                <button class="num-btn" data-val="8">8</button>
+                <button class="num-btn" data-val="9">9</button>
+                <div style="visibility: hidden;"></div>
+                <button class="num-btn" data-val="0">0</button>
+                <div style="visibility: hidden;"></div>
+            </div>
+            <div id="hanamaru"></div>
+        </div>
+    </div>
+</div>
+
+<div id="popup">ちがうよ！</div>
+
+<script>
+// --- 問題生成と状態管理 ---
+let divisor, dividend, q1, q2, q3, q, sub1, sub2, sub3;
+let yokoLay = null; // 横式：式の配置情報（列位置など）
+let qBig, sub1Big; // 筆算2：最初に立てる大きすぎる商とその積
+let qBig1, qBig2, sub1Big1, sub1Big2; // 筆算3：見当(q+2)→修正1(q+1)→正解(q) の商と積
+let est1, est2; // 筆算5：各けたの見当（＝正しい商のけた+1）
+let state = 0;
+let selectedCells = [];
+let states = [];
+let mode = '2digit';
+
+// --- 追加変数 ---
+let comboCount = 0;
+let startTime = 0;
+let errorStats = { tateru: 0, kakeru: 0, hiku: 0, orosu: 0, other: 0 };
+
+function generateStates() {
+    if (mode === 'yokoshiki') {
+        // 横式：答えを入力 →「たしかめ」→（あまりがあればひき算で入力）→終了
+        const rem = dividend - q * divisor;
+        const L = yokoLay;
+        const remTens = Math.floor(rem / 10), remOnes = rem % 10;
+        states = [
+            { id: 0, text: "答えをテンキーで入力しよう。（わからなければ「ヒント」）", type: "input", expect: () => q, targetCell: `r1-c${L.quotientCol}` },
+            { id: 1, text: "「たしかめ」ボタンをおして、たしかめよう。", type: "action", expect: "tashikame" },
+            { id: 2, text: "たしかめの計算をしているよ…", type: "wait" }
+        ];
+        if (rem > 0) {
+            states.push(
+                { id: 3, text: "ひき算をしよう。答えの十の位はいくつ？", type: "input", expect: () => remTens, targetCell: `r3-c${L.dividendOnes - 1}` },
+                { id: 4, text: "つづけて、一の位を入力しよう。", type: "input", expect: () => remOnes, targetCell: `r3-c${L.dividendOnes}` },
+                { id: 5, text: "できたね！", type: "finish" }
+            );
+        } else {
+            states.push(
+                { id: 3, text: "わりきれたね！", type: "finish" }
+            );
+        }
+        return;
+    }
+    if (mode === '3digit_div3') {
+        // 筆算６：3けた÷3けた・商1けた（一の位=c5）。見当(qBig)→✗→1つ小さく直す。
+        states = [
+            { id: 0, text: "はじめに何をしますか。", type: "action", expect: "tateru" },
+            { id: 1, text: "商はA・B・Cのどこにたちますか。", type: "click_cell", expect: "r0-c5" },
+            { id: 2, text: "何をたてますか。（指でかくして見当を）", type: "input", expect: () => qBig, targetCell: "r0-c5", altExpect: () => q, altNext: 7 },
+            { id: 3, text: "次に何をしますか。", type: "action", expect: "kakeru" },
+            { id: 4, text: "何と何をかけますか。", type: "click_cells_group", expectGroups: [ ["r1-c0", "r1-c1", "r1-c2"], ["r0-c5"] ] },
+            { id: 5, text: "かけ算をして、下にうつしましょう。", type: "wait" },
+            { id: 6, text: "大きすぎました！ １つ小さい数をたてましょう。", type: "input", expect: () => q, targetCell: "r0-c5" },
+            { id: 7, text: "次に何をしますか。", type: "action", expect: "kakeru" },
+            { id: 8, text: "何と何をかけますか。", type: "click_cells_group", expectGroups: [ ["r1-c0", "r1-c1", "r1-c2"], ["r0-c5"] ] },
+            { id: 9, text: "次に何をしますか。", type: "action", expect: "hiku" },
+            { id: 10, text: "何から何をひきますか。", type: "click_cells_group", expectGroups: [ ["r1-c3", "r1-c4", "r1-c5"], ["r2-c3", "r2-c4", "r2-c5"] ] },
+            { id: 11, text: "答えは出ました！", type: "finish" }
+        ];
+    } else if (mode === '3digit_div2') {
+        // 筆算５：3けた÷2けた・商2けた。各けたで 見当(q+1)→✗→1つ小さく直す（筆算２と同じ）。
+        states = [
+            { id: 0, text: "はじめに何をしますか。", type: "action", expect: "tateru" },
+            { id: 1, text: "商はA・B・Cのどこにたちますか。", type: "click_cell", expect: "r0-c3" },
+            { id: 2, text: "十の位に何をたてますか。（指でかくして見当を）", type: "input", expect: () => est1, targetCell: "r0-c3", altExpect: () => q1, altNext: 7 },
+            { id: 3, text: "次に何をしますか。", type: "action", expect: "kakeru" },
+            { id: 4, text: "何と何をかけますか。", type: "click_cells_group", expectGroups: [ ["r1-c0", "r1-c1"], ["r0-c3"] ] },
+            { id: 5, text: "かけ算をして、下にうつしましょう。", type: "wait" },
+            { id: 6, text: "大きすぎました！ １つ小さい数をたてましょう。", type: "input", expect: () => q1, targetCell: "r0-c3" },
+            { id: 7, text: "次に何をしますか。", type: "action", expect: "kakeru" },
+            { id: 8, text: "何と何をかけますか。", type: "click_cells_group", expectGroups: [ ["r1-c0", "r1-c1"], ["r0-c3"] ] },
+            { id: 9, text: "次に何をしますか。", type: "action", expect: "hiku" },
+            { id: 10, text: "何から何をひきますか。", type: "click_cells_group", expectGroups: [ ["r1-c2", "r1-c3"], ["r2-c2", "r2-c3"] ] },
+            { id: 11, text: "次に何をしますか。", type: "action", expect: "orosu" },
+            { id: 12, text: "どこに何をおろしますか。", type: "drag_drop", source: "r1-c4", target: "r3-c4" },
+            { id: 13, text: "次に何をしますか。", type: "action", expect: "tateru" },
+            { id: 14, text: "一の位に何をたてますか。（指でかくして見当を）", type: "input", expect: () => est2, targetCell: "r0-c4", altExpect: () => q2, altNext: 19 },
+            { id: 15, text: "次に何をしますか。", type: "action", expect: "kakeru" },
+            { id: 16, text: "何と何をかけますか。", type: "click_cells_group", expectGroups: [ ["r1-c0", "r1-c1"], ["r0-c4"] ] },
+            { id: 17, text: "かけ算をして、下にうつしましょう。", type: "wait" },
+            { id: 18, text: "大きすぎました！ １つ小さい数をたてましょう。", type: "input", expect: () => q2, targetCell: "r0-c4" },
+            { id: 19, text: "次に何をしますか。", type: "action", expect: "kakeru" },
+            { id: 20, text: "何と何をかけますか。", type: "click_cells_group", expectGroups: [ ["r1-c0", "r1-c1"], ["r0-c4"] ] },
+            { id: 21, text: "次に何をしますか。", type: "action", expect: "hiku" },
+            { id: 22, text: "何から何をひきますか。", type: "click_cells_group", expectGroups: [ ["r3-c3", "r3-c4"], ["r4-c3", "r4-c4"] ] },
+            { id: 23, text: "答えは出ました！", type: "finish" }
+        ];
+    } else if (mode === '3digit_div1') {
+        // 筆算４：わられる数3けた・わる数2けた・商1けた（一の位=c4）。見当(qBig)→✗→1つ減らす。
+        states = [
+            { id: 0, text: "はじめに何をしますか。", type: "action", expect: "tateru" },
+            { id: 1, text: "商はA・B・Cのどこにたちますか。", type: "click_cell", expect: "r0-c4" },
+            { id: 2, text: "何をたてますか。（指でかくして見当をつけよう）", type: "input", expect: () => qBig, targetCell: "r0-c4", altExpect: () => q, altNext: 7 },
+            { id: 3, text: "次に何をしますか。", type: "action", expect: "kakeru" },
+            { id: 4, text: "何と何をかけますか。", type: "click_cells_group", expectGroups: [ ["r1-c0", "r1-c1"], ["r0-c4"] ] },
+            { id: 5, text: "かけ算をして、わられる数の下にうつしましょう。", type: "wait" },
+            { id: 6, text: "大きすぎました！ １つ小さい数をたてましょう。", type: "input", expect: () => q, targetCell: "r0-c4" },
+            { id: 7, text: "次に何をしますか。", type: "action", expect: "kakeru" },
+            { id: 8, text: "何と何をかけますか。", type: "click_cells_group", expectGroups: [ ["r1-c0", "r1-c1"], ["r0-c4"] ] },
+            { id: 9, text: "次に何をしますか。", type: "action", expect: "hiku" },
+            { id: 10, text: "何から何をひきますか。", type: "click_cells_group", expectGroups: [ ["r1-c2", "r1-c3", "r1-c4"], ["r2-c2", "r2-c3", "r2-c4"] ] },
+            { id: 11, text: "答えは出ました！", type: "finish" }
+        ];
+    } else if (mode === '2digit_div3') {
+        // 筆算３：見当(q+2)を立てる → ✗ → q+1に直す → まだ✗ → qに直す（立てなおし2回）
+        states = [
+            { id: 0, text: "はじめに何をしますか。", type: "action", expect: "tateru" },
+            { id: 1, text: "商はAにたちますか、Bにたちますか。", type: "click_cell", expect: "r0-c3" },
+            { id: 2, text: "何をたてますか。（指でかくして見当をつけよう）", type: "input",
+              expect: () => qBig1, targetCell: "r0-c3",
+              alts: [ { expect: () => qBig2, next: 7 }, { expect: () => q, next: 11 } ] },
+            { id: 3, text: "次に何をしますか。", type: "action", expect: "kakeru" },
+            { id: 4, text: "何と何をかけますか。", type: "click_cells_group", expectGroups: [ ["r1-c0", "r1-c1"], ["r0-c3"] ] },
+            { id: 5, text: "かけ算をして、わられる数の下にうつしましょう。", type: "wait" },
+            { id: 6, text: "大きすぎました！ １つ小さい数をたてましょう。", type: "input", expect: () => qBig2, targetCell: "r0-c3" },
+            { id: 7, text: "次に何をしますか。", type: "action", expect: "kakeru" },
+            { id: 8, text: "何と何をかけますか。", type: "click_cells_group", expectGroups: [ ["r1-c0", "r1-c1"], ["r0-c3"] ] },
+            { id: 9, text: "かけ算をして、わられる数の下にうつしましょう。", type: "wait" },
+            { id: 10, text: "まだ大きいよ。 もう１つ小さい数をたてましょう。", type: "input", expect: () => q, targetCell: "r0-c3" },
+            { id: 11, text: "次に何をしますか。", type: "action", expect: "kakeru" },
+            { id: 12, text: "何と何をかけますか。", type: "click_cells_group", expectGroups: [ ["r1-c0", "r1-c1"], ["r0-c3"] ] },
+            { id: 13, text: "次に何をしますか。", type: "action", expect: "hiku" },
+            { id: 14, text: "何から何をひきますか。", type: "click_cells_group", expectGroups: [ ["r1-c2", "r1-c3"], ["r2-c2", "r2-c3"] ] },
+            { id: 15, text: "答えは出ました！", type: "finish" }
+        ];
+    } else if (mode === '2digit_div2') {
+        // 筆算２：最初に大きすぎる商(qBig)を立てる → かける → 大きすぎて✗ → 1つ減らして立て直す
+        states = [
+            { id: 0, text: "はじめに何をしますか。", type: "action", expect: "tateru" },
+            { id: 1, text: "商はAにたちますか、Bにたちますか。", type: "click_cell", expect: "r0-c3" },
+            { id: 2, text: "何をたてますか。（指でかくして見当をつけよう）", type: "input", expect: () => qBig, targetCell: "r0-c3", altExpect: () => q, altNext: 7 },
+            { id: 3, text: "次に何をしますか。", type: "action", expect: "kakeru" },
+            { id: 4, text: "何と何をかけますか。", type: "click_cells_group", expectGroups: [ ["r1-c0", "r1-c1"], ["r0-c3"] ] },
+            { id: 5, text: "かけ算をして、わられる数の下にうつしましょう。", type: "wait" },
+            { id: 6, text: "大きすぎました！ １つ小さい数をたてましょう。", type: "input", expect: () => q, targetCell: "r0-c3" },
+            { id: 7, text: "次に何をしますか。", type: "action", expect: "kakeru" },
+            { id: 8, text: "何と何をかけますか。", type: "click_cells_group", expectGroups: [ ["r1-c0", "r1-c1"], ["r0-c3"] ] },
+            { id: 9, text: "次に何をしますか。", type: "action", expect: "hiku" },
+            { id: 10, text: "何から何をひきますか。", type: "click_cells_group", expectGroups: [ ["r1-c2", "r1-c3"], ["r2-c2", "r2-c3"] ] },
+            { id: 11, text: "答えは出ました！", type: "finish" }
+        ];
+    } else if (mode === '2digit_div') {
+        // ２けたでわる①：わる数2桁(c0,c1)、わられる数2桁(c2,c3)、商1桁(一の位=c3の上)、あまり可
+        states = [
+            { id: 0, text: "はじめに何をしますか。", type: "action", expect: "tateru" },
+            { id: 1, text: "商はAにたちますか、Bにたちますか。", type: "click_cell", expect: "r0-c3" },
+            { id: 2, text: "何をたてますか。（指でかくして見当をつけよう）", type: "input", expect: () => q, targetCell: "r0-c3" },
+            { id: 3, text: "次に何をしますか。", type: "action", expect: "kakeru" },
+            { id: 4, text: "何と何をかけますか。", type: "click_cells_group", expectGroups: [ ["r1-c0", "r1-c1"], ["r0-c3"] ] },
+            { id: 5, text: "次に何をしますか。", type: "action", expect: "hiku" },
+            { id: 6, text: "何から何をひきますか。", type: "click_cells_group", expectGroups: [ ["r1-c2", "r1-c3"], ["r2-c2", "r2-c3"] ] },
+            { id: 7, text: "答えは出ました！", type: "finish" }
+        ];
+    } else if (mode === '2digit') {
+        states = [
+            { id: 0, text: "はじめに何をしますか。", type: "action", expect: "tateru" },
+            { id: 1, text: "商はAにたちますか、Bにたちますか。", type: "click_cell", expect: "r0-c3" },
+            { id: 2, text: "何をたてますか。", type: "input", expect: () => q1, targetCell: "r0-c3" },
+            { id: 3, text: "次に何をしますか。", type: "action", expect: "kakeru" },
+            { id: 4, text: "何と何をかけますか。", type: "click_cells", expect: ["r1-c2", "r0-c3"] },
+            { id: 5, text: "次に何をしますか。", type: "action", expect: "hiku" },
+            { id: 6, text: "何から何をひきますか。", type: "click_cells", expect: ["r1-c3", "r2-c3"] },
+            { id: 7, text: "次に何をしますか。", type: "action", expect: "orosu" },
+            { id: 8, text: "どこに何をおろしますか。", type: "drag_drop", source: "r1-c4", target: "r3-c4" },
+            { id: 9, text: "次に何をしますか。", type: "action", expect: "tateru" },
+            { id: 10, text: "何をたてますか。", type: "input", expect: () => q2, targetCell: "r0-c4" }
+        ];
+        if (q2 === 0) {
+            states.push({ id: 11, text: "答えは出ました！", type: "finish" });
+        } else {
+            states.push(
+                { id: 11, text: "次に何をしますか。", type: "action", expect: "kakeru" },
+                { id: 12, text: "何と何をかけますか。", type: "click_cells", expect: ["r1-c2", "r0-c4"] },
+                { id: 13, text: "次に何をしますか。", type: "action", expect: "hiku" },
+                { id: 14, text: "何から何をひきますか。", type: "click_cells_group", expectGroups: [ ["r3-c3", "r3-c4"], ["r4-c3", "r4-c4"] ] },
+                { id: 15, text: "答えは出ました！", type: "finish" }
+            );
+        }
+    } else if (mode === '3digit1') {
+        states = [
+            { id: 0, text: "はじめに何をしますか。", type: "action", expect: "tateru" },
+            { id: 1, text: "商はAにたちますか、Bにたちますか、Cにたちますか。", type: "click_cell", expect: "r0-c3" },
+            { id: 2, text: "何をたてますか。", type: "input", expect: () => q1, targetCell: "r0-c3" },
+            { id: 3, text: "次に何をしますか。", type: "action", expect: "kakeru" },
+            { id: 4, text: "何と何をかけますか。", type: "click_cells", expect: ["r1-c2", "r0-c3"] },
+            { id: 5, text: "次に何をしますか。", type: "action", expect: "hiku" },
+            { id: 6, text: "何から何をひきますか。", type: "click_cells", expect: ["r1-c3", "r2-c3"] },
+            { id: 7, text: "次に何をしますか。", type: "action", expect: "orosu" },
+            { id: 8, text: "どこに何をおろしますか。", type: "drag_drop", source: "r1-c4", target: "r3-c4" },
+            { id: 9, text: "次に何をしますか。", type: "action", expect: "tateru" },
+            { id: 10, text: "何をたてますか。", type: "input", expect: () => q2, targetCell: "r0-c4" },
+            { id: 11, text: "次に何をしますか。", type: "action", expect: "kakeru" },
+            { id: 12, text: "何と何をかけますか。", type: "click_cells", expect: ["r1-c2", "r0-c4"] },
+            { id: 13, text: "次に何をしますか。", type: "action", expect: "hiku" },
+            { id: 14, text: "何から何をひきますか。", type: "click_cells_group", expectGroups: [ ["r3-c3", "r3-c4"], ["r4-c3", "r4-c4"] ] },
+            { id: 15, text: "次に何をしますか。", type: "action", expect: "orosu" },
+            { id: 16, text: "どこに何をおろしますか。", type: "drag_drop", source: "r1-c5", target: "r5-c5" },
+            { id: 17, text: "次に何をしますか。", type: "action", expect: "tateru" },
+            { id: 18, text: "何をたてますか。", type: "input", expect: () => q3, targetCell: "r0-c5" }
+        ];
+        if (q3 === 0) {
+            states.push({ id: 19, text: "答えは出ました！", type: "finish" });
+        } else {
+            states.push(
+                { id: 19, text: "次に何をしますか。", type: "action", expect: "kakeru" },
+                { id: 20, text: "何と何をかけますか。", type: "click_cells", expect: ["r1-c2", "r0-c5"] },
+                { id: 21, text: "次に何をしますか。", type: "action", expect: "hiku" },
+                { id: 22, text: "何から何をひきますか。", type: "click_cells_group", expectGroups: [ ["r5-c4", "r5-c5"], ["r6-c4", "r6-c5"] ] },
+                { id: 23, text: "答えは出ました！", type: "finish" }
+            );
+        }
+    } else if (mode === '3digit2') {
+        states = [
+            { id: 0, text: "はじめに何をしますか。", type: "action", expect: "tateru" },
+            { id: 1, text: "商はAにたちますか、Bにたちますか、Cにたちますか。", type: "click_cell", expect: "r0-c4" },
+            { id: 2, text: "何をたてますか。", type: "input", expect: () => q1, targetCell: "r0-c4" },
+            { id: 3, text: "次に何をしますか。", type: "action", expect: "kakeru" },
+            { id: 4, text: "何と何をかけますか。", type: "click_cells", expect: ["r1-c2", "r0-c4"] },
+            { id: 5, text: "次に何をしますか。", type: "action", expect: "hiku" },
+            { id: 6, text: "何から何をひきますか。", type: "click_cells_group", expectGroups: [ ["r1-c3", "r1-c4"], ["r2-c3", "r2-c4"] ] },
+            { id: 7, text: "次に何をしますか。", type: "action", expect: "orosu" },
+            { id: 8, text: "どこに何をおろしますか。", type: "drag_drop", source: "r1-c5", target: "r3-c5" },
+            { id: 9, text: "次に何をしますか。", type: "action", expect: "tateru" },
+            { id: 10, text: "何をたてますか。", type: "input", expect: () => q2, targetCell: "r0-c5" }
+        ];
+        if (q2 === 0) {
+            states.push({ id: 11, text: "答えは出ました！", type: "finish" });
+        } else {
+            states.push(
+                { id: 11, text: "次に何をしますか。", type: "action", expect: "kakeru" },
+                { id: 12, text: "何と何をかけますか。", type: "click_cells", expect: ["r1-c2", "r0-c5"] },
+                { id: 13, text: "次に何をしますか。", type: "action", expect: "hiku" },
+                { id: 14, text: "何から何をひきますか。", type: "click_cells_group", expectGroups: [ ["r3-c4", "r3-c5"], ["r4-c4", "r4-c5"] ] },
+                { id: 15, text: "答えは出ました！", type: "finish" }
+            );
+        }
+    }
+}
+
+function generateProblem() {
+    // --- 横式（何十÷何十・何百÷何十など。商1けた）---
+    // わられる数・わる数の一の位「0」を指でかくすと、簡単なわり算に等しい。
+    // 2けた・3けたのわられる数どちらも出す。あまりあり／わりきれ 両方。
+    if (mode === 'yokoshiki') {
+        const pool = [];
+        for (let b = 2; b <= 9; b++) {          // わる数 ÷10 → 2〜9（＝20〜90）
+            const dv = b * 10;
+            for (let A = 2; A <= 99; A++) {     // わられる数 ÷10 → 2〜99
+                const dd = A * 10;
+                if (dd <= dv) continue;         // わられる数 > わる数
+                const qq = Math.floor(A / b);   // 0を隠した計算＝floor(dd/dv)と一致
+                if (qq < 2 || qq > 9) continue; // 商は1けた(2〜9)
+                pool.push([dd, dv, qq]);
+            }
+        }
+        const two = pool.filter(p => p[0] < 100);
+        const three = pool.filter(p => p[0] >= 100);
+        const useTwo = (Math.random() < 0.6) || three.length === 0;
+        const arr = useTwo ? two : three;
+        const picked = arr[Math.floor(Math.random() * arr.length)];
+        dividend = picked[0];
+        divisor  = picked[1];
+        q        = picked[2];
+        sub1     = q * divisor;   // たしかめのかけ算の積（＝ひくもの）
+
+        // 式の配置（1行あけて r1／左端1マスあけて c1 から）を計算
+        const ddStr = String(dividend), dvStr = String(divisor);
+        let col = 1;
+        const dividendCols = []; for (let i = 0; i < ddStr.length; i++) { dividendCols.push(col++); }
+        const divCol = col++;                       // ÷
+        const divisorCols = []; for (let i = 0; i < dvStr.length; i++) { divisorCols.push(col++); }
+        const eqCol = col++;                        // =
+        const quotientCol = col;                    // 商（入力）
+        yokoLay = {
+            ddStr, dvStr, dividendCols, divCol, divisorCols, eqCol, quotientCol,
+            dividendStart: dividendCols[0],
+            dividendOnes: dividendCols[dividendCols.length - 1],
+            divisorStart: divisorCols[0],
+            divisorOnes: divisorCols[divisorCols.length - 1]
+        };
+        return;
+    }
+
+    // --- 筆算６（3けた÷3けた・商1けた・見当(q+1)で1回立てなおし）---
+    if (mode === '3digit_div3') {
+        // 見当は指かくしの floor(わられる数の百の位 / わる数の百の位)。見当＝正しい商+1 の問題を出す。
+        const pool = {};
+        for (let d = 100; d <= 499; d++) {
+            const vh = Math.floor(d / 100);
+            for (let dv = 100; dv <= 999; dv++) {
+                const qq = Math.floor(dv / d);
+                if (qq < 2 || qq > 8) continue;          // 商1けた(2~8)、見当q+1が1桁
+                const est = Math.floor(Math.floor(dv / 100) / vh);
+                if (est === qq + 1 && est <= 9 && (qq + 1) * d <= 999) {
+                    (pool[qq] = pool[qq] || []).push([dv, d, qq]);
+                }
+            }
+        }
+        const keys = Object.keys(pool);
+        const k = keys[Math.floor(Math.random() * keys.length)];
+        const arr = pool[k];
+        const picked = arr[Math.floor(Math.random() * arr.length)];
+        dividend = picked[0];
+        divisor  = picked[1];
+        q        = picked[2];        // 正しい商
+        qBig     = q + 1;            // 見当（大きすぎ）
+        sub1     = q * divisor;      // 正しい積
+        sub1Big  = qBig * divisor;   // 見当の積（わられる数を超える）
+        return;
+    }
+
+    // --- 筆算５（3けた÷2けた・商2けた＝十の位から立つ・各けたで✗→立てなおし1回）---
+    if (mode === '3digit_div2') {
+        // 見当は指かくしの floor(先頭のけた / わる数の十の位)。両けたとも 見当＝正しい商+1 になる問題を出す。
+        const pool = {};
+        for (let d = 12; d <= 49; d++) {
+            const dt = Math.floor(d / 10);
+            if (dt < 2) continue;                 // わる数の十の位≥2（十の位1だと見当が大きく外れる）
+            for (let dv = 100; dv <= 999; dv++) {
+                const qq = Math.floor(dv / d);
+                if (qq < 10 || qq > 99) continue;
+                const a = Math.floor(qq / 10), b = qq % 10;
+                if (b === 0) continue;
+                const dd1 = Math.floor(dv / 100);
+                const NN1 = Math.floor(dv / 10);
+                const rr1 = NN1 % d;               // 差1
+                if (rr1 >= 10) continue;           // 中間は2けた
+                const e1 = Math.floor(dd1 / dt);   // 見当1
+                const e2 = Math.floor(rr1 / dt);   // 見当2
+                if (e1 === a + 1 && e2 === b + 1 && e1 <= 9 && e2 <= 9) {
+                    (pool[a] = pool[a] || []).push([dv, d, qq]);
+                }
+            }
+        }
+        const keys = Object.keys(pool);
+        const a = keys[Math.floor(Math.random() * keys.length)];
+        const arr = pool[a];
+        const picked = arr[Math.floor(Math.random() * arr.length)];
+        dividend = picked[0];
+        divisor  = picked[1];
+        q        = picked[2];
+        q1       = Math.floor(q / 10);
+        q2       = q % 10;
+        sub1     = q1 * divisor;         // 積1（正しい）
+        sub2     = q2 * divisor;         // 積2（正しい）
+        est1     = q1 + 1;               // 見当1（大きすぎ）
+        est2     = q2 + 1;               // 見当2（大きすぎ）
+        return;
+    }
+
+    // --- 筆算４（わられる数3けた・わる数2けた・商1けた・見当(q+1)で1回修正）---
+    if (mode === '3digit_div1') {
+        // 条件: わられる数3桁、わる数2桁(十の位2~4)、商1桁(一の位に立つ)、
+        //       見当 floor(上2けた/十の位) が 本当の商+1（例 153÷24：15÷2=7→6）。あまり可。
+        const pool = {};
+        for (let d = 20; d <= 49; d++) {
+            for (let dv = 100; dv <= 999; dv++) {
+                const qq = Math.floor(dv / d);
+                if (qq < 2 || qq > 8) continue;      // 商1けた(2~8)、見当q+1が1桁
+                const est = Math.floor(Math.floor(dv / 10) / Math.floor(d / 10));
+                if (est === qq + 1 && est <= 9) {
+                    (pool[qq] = pool[qq] || []).push([dv, d, qq]);
+                }
+            }
+        }
+        const qKeys = Object.keys(pool);
+        const chosenQ = qKeys[Math.floor(Math.random() * qKeys.length)];
+        const arr = pool[chosenQ];
+        const picked = arr[Math.floor(Math.random() * arr.length)];
+        dividend = picked[0];
+        divisor  = picked[1];
+        q        = picked[2];        // 正しい商
+        qBig     = q + 1;            // 最初に立ててしまう見当（大きすぎ）
+        sub1     = q * divisor;      // 正しい積
+        sub1Big  = qBig * divisor;   // 見当の積（わられる数を超える）
+        return;
+    }
+
+    // --- 筆算３（見当がちょうど2大きい＝立てなおしを2回する）---
+    if (mode === '2digit_div3') {
+        // 条件: わる数2桁(十の位1)、見当 floor(十/十) が 本当の商+2（2回減らせば当たる）
+        //       積が2桁に収まるものだけ（表示くずれ防止）。あまりは出てもよい。
+        const pool = {};
+        for (let d = 12; d <= 19; d++) {
+            for (let dv = 10; dv <= 99; dv++) {
+                const qq = Math.floor(dv / d);
+                if (qq < 2 || qq > 4) continue;
+                const est = Math.floor(Math.floor(dv / 10) / Math.floor(d / 10));
+                if (est === qq + 2 && (qq + 2) * d <= 99) {
+                    (pool[qq] = pool[qq] || []).push([dv, d, qq]);
+                }
+            }
+        }
+        // 商(2,3,4)がかたよらないよう、まず商を等確率で選んでから問題を選ぶ
+        const qKeys = Object.keys(pool);
+        const chosenQ = qKeys[Math.floor(Math.random() * qKeys.length)];
+        const arr = pool[chosenQ];
+        const picked = arr[Math.floor(Math.random() * arr.length)];
+        dividend = picked[0];
+        divisor  = picked[1];
+        q        = picked[2];        // 正しい商
+        qBig1    = q + 2;            // 最初に立ててしまう見当（大きすぎ）
+        qBig2    = q + 1;            // 1回目の修正でもまだ大きい
+        sub1     = q * divisor;      // 正しい積
+        sub1Big1 = qBig1 * divisor;  // 見当の積（わられる数を超える）
+        sub1Big2 = qBig2 * divisor;  // 修正1の積（まだわられる数を超える）
+        return;
+    }
+
+    // --- 筆算２（見当がちょうど1大きい＝最初に立てた商を1つ減らす）---
+    if (mode === '2digit_div2') {
+        // 条件: わる数2桁(十の位1~3)、見当 floor(十/十) が 本当の商+1（1回だけ減らせば当たる）
+        const pool = {};
+        for (let d = 11; d <= 39; d++) {
+            for (let dv = 10; dv <= 99; dv++) {
+                const qq = Math.floor(dv / d);
+                if (qq < 1 || qq > 8) continue;
+                const est = Math.floor(Math.floor(dv / 10) / Math.floor(d / 10));
+                if (est === qq + 1) {
+                    (pool[qq] = pool[qq] || []).push([dv, d, qq]);
+                }
+            }
+        }
+        // 修正後の商が2~4になる問題に限定（1まで減らす／偏りを避ける）
+        const qKeys = Object.keys(pool).filter(k => Number(k) >= 2 && Number(k) <= 4);
+        const chosenQ = qKeys[Math.floor(Math.random() * qKeys.length)];
+        const arr = pool[chosenQ];
+        const picked = arr[Math.floor(Math.random() * arr.length)];
+        dividend = picked[0];
+        divisor  = picked[1];
+        q        = picked[2];        // 正しい商
+        qBig     = q + 1;            // 最初に立ててしまう（大きすぎる）商
+        sub1     = q * divisor;      // 正しい積
+        sub1Big  = qBig * divisor;   // 大きすぎる積（わられる数を超える）
+        return;
+    }
+
+    // --- ２けたでわる①（商１けた・指で隠す見当がそのまま立つ・あまりは出てもよい）---
+    if (mode === '2digit_div') {
+        // 条件: わる数2桁(十の位2~4)、商が1桁(2以上)、
+        //       一の位を隠した見当 floor(十の位/十の位) が本当の商とぴったり一致（修正不要）。
+        //       あまりは出てもよい（例 79÷23=3…10、69÷23=3…0）。
+        const pool = {};
+        for (let d = 20; d <= 49; d++) {
+            for (let dv = 10; dv <= 99; dv++) {
+                const qq = Math.floor(dv / d);
+                if (qq < 2 || qq > 9) continue;
+                if (Math.floor(Math.floor(dv / 10) / Math.floor(d / 10)) === qq) {
+                    (pool[qq] = pool[qq] || []).push([dv, d, qq]);
+                }
+            }
+        }
+        // 商(2,3,4)がかたよらないよう、まず商を等確率で選んでから問題を選ぶ
+        const qKeys = Object.keys(pool);
+        const chosenQ = qKeys[Math.floor(Math.random() * qKeys.length)];
+        const arr = pool[chosenQ];
+        const picked = arr[Math.floor(Math.random() * arr.length)];
+        dividend = picked[0];
+        divisor  = picked[1];
+        q        = picked[2];
+        sub1 = q * divisor; // 積
+        return;
+    }
+
+    divisor = Math.floor(Math.random() * 8) + 2; // 2~9
+    
+    if (mode === '2digit') {
+        let maxQ = Math.floor(99 / divisor);
+        q = Math.floor(Math.random() * (maxQ - 10 + 1)) + 10; // 10 ~ maxQ (確実にあまらず、十の位に商が立つ)
+    } else if (mode === '3digit1') {
+        let minQ = 100;
+        let maxQ = Math.floor(999 / divisor);
+        q = Math.floor(Math.random() * (maxQ - minQ + 1)) + minQ;
+    } else if (mode === '3digit2') {
+        let minQ = Math.ceil(100 / divisor);
+        if (minQ < 10) minQ = 10;
+        let maxQ = 99;
+        q = Math.floor(Math.random() * (maxQ - minQ + 1)) + minQ;
+    }
+    
+    dividend = divisor * q;
+    
+    if (mode === '2digit') {
+        q1 = Math.floor(q / 10);
+        q2 = q % 10;
+        sub1 = q1 * divisor;
+        sub2 = q2 * divisor;
+    } else if (mode === '3digit1') {
+        q1 = Math.floor(q / 100);
+        q2 = Math.floor((q % 100) / 10);
+        q3 = q % 10;
+        sub1 = q1 * divisor;
+        sub2 = q2 * divisor;
+        sub3 = q3 * divisor;
+    } else if (mode === '3digit2') {
+        q1 = Math.floor(q / 10);
+        q2 = q % 10;
+        sub1 = q1 * divisor;
+        sub2 = q2 * divisor;
+    }
+}
+
+// --- Web Audio API ---
+let audioCtx;
+const correctAudio = new Audio('https://github.com/byakusen/gogelige.quiz/raw/refs/heads/main/quiz_seikai.mp3');
+
+function initAudio() {
+    if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+    }
+    correctAudio.load();
+}
+document.addEventListener('pointerdown', initAudio, { once: true });
+
+function playSound(type) {
+    if (type === 'correct') {
+        correctAudio.currentTime = 0;
+        correctAudio.play().catch(e => console.error("Audio play error:", e));
+        return;
+    }
+
+    if (!audioCtx) return;
+    const osc = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+    osc.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+
+    const now = audioCtx.currentTime;
+    
+    if (type === 'wrong') { // ブブー
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(150, now);
+        osc.frequency.setValueAtTime(130, now + 0.1);
+        gainNode.gain.setValueAtTime(0.3, now);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+        osc.start(now);
+        osc.stop(now + 0.3);
+    } else if (type === 'click') { // ピッ
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(800, now);
+        gainNode.gain.setValueAtTime(0.1, now);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+        osc.start(now);
+        osc.stop(now + 0.1);
+    }
+}
+
+// 答えの表示文言（２けたでわる①はあまりがあれば併記）
+function answerText() {
+    if (mode === 'yokoshiki' || mode === '2digit_div' || mode === '2digit_div2' || mode === '2digit_div3' || mode === '3digit_div1' || mode === '3digit_div2' || mode === '3digit_div3') {
+        const rem = dividend - q * divisor;
+        if (rem > 0) return `答え（ ${q} ）あまり（ ${rem} ）`;
+    }
+    return `答え（ ${q} ）`;
+}
+
+// 指でかくすカバーを対象セルに重ねる
+function addFingerCover(cellId) {
+    const el = document.getElementById(`cell-${cellId}`);
+    if (el && !el.querySelector('.finger-cover')) {
+        const cover = document.createElement('div');
+        cover.className = 'finger-cover';
+        el.appendChild(cover);
+    }
+}
+
+// 横式：「たしかめ」でわる数×商＝積 を r2 に順に出す（わる数を上のわる数と縦にそろえる）。
+function renderYokoMult(onDone) {
+    const L = yokoLay;
+    const show = (col, val) => {
+        const el = document.getElementById(`cell-r2-c${col}`);
+        el.innerText = val;
+        el.classList.remove('fade-in'); void el.offsetWidth; el.classList.add('fade-in');
+    };
+    const dvStr = L.dvStr, qStr = String(q), pStr = String(sub1);
+    let col = L.divisorStart;
+    const dvCells = []; for (const ch of dvStr) { dvCells.push([col++, ch]); }
+    const xCol = col++, qCol = col++, eqCol = col++;
+    const pCells = []; for (const ch of pStr) { pCells.push([col++, ch]); }
+    dvCells.forEach(([c, ch]) => show(c, ch));
+    setTimeout(() => { show(xCol, '×'); show(qCol, qStr); }, 450);
+    setTimeout(() => { show(eqCol, '='); }, 900);
+    setTimeout(() => { pCells.forEach(([c, ch]) => show(c, ch)); }, 1400);
+    if (onDone) setTimeout(onDone, 2100);
+}
+
+// 横式（あまりあり）：わられる数の下(r2)に「−積」＋ひき算の線、r3にあまりの入力箱を出す。
+function renderYokoSub(onDone) {
+    const L = yokoLay;
+    const pStr = String(sub1);                          // ひくもの（積）
+    const ddOnes = L.dividendOnes;                      // わられる数の一の位の列
+    const startCol = ddOnes - (pStr.length - 1);        // 積を右づめでそろえる
+    const minusCol = L.dividendStart - 1;               // 左端のあきマス（c0）
+    // マイナス記号
+    const mEl = document.getElementById(`cell-r2-c${minusCol}`);
+    mEl.innerText = '−'; mEl.classList.remove('fade-in'); void mEl.offsetWidth; mEl.classList.add('fade-in');
+    // 積（−のうしろ）
+    let c = startCol;
+    for (const ch of pStr) {
+        const el = document.getElementById(`cell-r2-c${c}`);
+        el.innerText = ch; el.classList.remove('fade-in'); void el.offsetWidth; el.classList.add('fade-in');
+        c++;
+    }
+    // ひき算の線（マイナス〜わられる数の一の位まで）
+    for (let cc = minusCol; cc <= ddOnes; cc++) {
+        document.getElementById(`cell-r2-c${cc}`).classList.add('border-bottom');
+    }
+    // ひき算の答え（あまり）は十の位・一の位とも児童が入力する
+    if (onDone) setTimeout(onDone, 600);
+}
+
+// あいたスペースに「わる数 × 商 ＝ 積」のかけ算の筆算を、順番に少しずつ出す
+// mult: かける数（商）, product: 積, afterDrop: 積をおろした後に呼ぶ処理（任意）
+// boxRow: 補助計算を書き始める行（省略時 0。筆算5の一の位では 4 にして1行あけて下に書く）
+function renderMultBox(mult, product, afterDrop, dropRow, dropOnesCol, boxRow) {
+    if (mult === undefined) mult = q;
+    if (product === undefined) product = sub1;
+    if (dropRow === undefined) dropRow = 2;          // おろす行（筆算1〜3は r2）
+    if (dropOnesCol === undefined) dropOnesCol = 3;  // おろす一の位の列（筆算1〜3は c3）
+    if (boxRow === undefined) boxRow = 0;            // 補助計算の開始行
+    const bR0 = boxRow, bR1 = boxRow + 1, bR2 = boxRow + 2;
+    const dt = Math.floor(divisor / 10), du = divisor % 10;
+    const big = product >= 100;                 // 積が3けた（見当が大きすぎる時に起こる）
+    const p3 = Math.floor(product / 100);       // 百の位
+    const p2 = Math.floor((product % 100) / 10);// 十の位
+    const p1 = product % 10;                     // 一の位
+    const show = (id, val) => {
+        const el = document.getElementById('cell-' + id);
+        el.innerText = val;
+        el.classList.remove('fade-in'); void el.offsetWidth; el.classList.add('fade-in');
+    };
+    // ① わる数 ＋ かけ算の線のスペースを先に確保（透明）
+    show(`r${bR0}-c7`, dt); show(`r${bR0}-c8`, du);
+    [`r${bR1}-c6`, `r${bR1}-c7`, `r${bR1}-c8`].forEach(id =>
+        document.getElementById('cell-' + id).classList.add('border-bottom', 'border-hidden'));
+    // ② ×と商（かける数）
+    setTimeout(() => { show(`r${bR1}-c6`, '×'); show(`r${bR1}-c8`, mult); }, 600);
+    // ③ かけ算の線を見せる
+    setTimeout(() => {
+        [`r${bR1}-c6`, `r${bR1}-c7`, `r${bR1}-c8`].forEach(id =>
+            document.getElementById('cell-' + id).classList.remove('border-hidden'));
+    }, 1200);
+    // ④ 積（右づめ：一の位=c8。3けたなら百の位を c6 に）
+    setTimeout(() => {
+        if (big) show(`r${bR2}-c6`, p3);
+        else document.getElementById(`cell-r${bR2}-c6`).innerText = '';
+        show(`r${bR2}-c7`, p2); show(`r${bR2}-c8`, p1);
+    }, 1800);
+    // ⑤ 積が出た1秒後に、わり算の筆算にも積をおろす（右づめ。3けたなら一つ左にはみ出す）
+    setTimeout(() => {
+        const cOne = dropOnesCol, cTen = dropOnesCol - 1, cHun = dropOnesCol - 2;
+        if (big) {
+            show(`r${dropRow}-c${cHun}`, p3);
+            document.getElementById(`cell-r${dropRow}-c${cHun}`).classList.add('border-bottom');
+            document.getElementById(`cell-r${dropRow}-c${cHun}`).classList.remove('border-hidden');
+        } else {
+            const hun = document.getElementById(`cell-r${dropRow}-c${cHun}`);
+            if (hun) hun.innerText = '';
+        }
+        show(`r${dropRow}-c${cTen}`, p2); show(`r${dropRow}-c${cOne}`, p1);
+        document.getElementById(`cell-r${dropRow}-c${cTen}`).classList.remove('border-hidden');
+        document.getElementById(`cell-r${dropRow}-c${cOne}`).classList.remove('border-hidden');
+        if (afterDrop) setTimeout(afterDrop, 500);
+    }, 2800);
+}
+
+// かけ算の筆算（右側）を消す。boxRow を指定するとその位置の補助計算だけ消す
+function clearMultBox(boxRow) {
+    if (boxRow === undefined) boxRow = 0;
+    const b0 = boxRow, b1 = boxRow + 1, b2 = boxRow + 2;
+    [`r${b0}-c7`, `r${b0}-c8`, `r${b1}-c6`, `r${b1}-c7`, `r${b1}-c8`, `r${b2}-c6`, `r${b2}-c7`, `r${b2}-c8`].forEach(id => {
+        const el = document.getElementById('cell-' + id);
+        el.innerText = '';
+        el.classList.remove('border-bottom', 'border-hidden', 'fade-in');
+    });
+}
+
+// 大きすぎたときの✗を、わられる数の下の積の右に出す
+function showWrongX() {
+    const el = document.getElementById('cell-r2-c4');
+    el.innerHTML = '<span class="x-mark">✗</span>';
+}
+function clearWrongX() {
+    document.getElementById('cell-r2-c4').innerHTML = '';
+}
+
+// 筆算４用：積が3けたになるかけ算の筆算（わる数2桁×商1桁＝積 最大3桁）を右に表示 → わり算(c2,c3,c4)へおろす
+function renderMult3(mult, product, afterDrop) {
+    if (mult === undefined) mult = q;
+    if (product === undefined) product = sub1;
+    const dt = Math.floor(divisor / 10), du = divisor % 10;
+    const p3 = Math.floor(product / 100), p2 = Math.floor((product % 100) / 10), p1 = product % 10;
+    const show = (id, val) => {
+        const el = document.getElementById('cell-' + id);
+        el.innerText = val;
+        el.classList.remove('fade-in'); void el.offsetWidth; el.classList.add('fade-in');
+    };
+    show('r0-c7', dt); show('r0-c8', du);
+    ['r1-c6', 'r1-c7', 'r1-c8'].forEach(id =>
+        document.getElementById('cell-' + id).classList.add('border-bottom', 'border-hidden'));
+    setTimeout(() => { show('r1-c6', '×'); show('r1-c8', mult); }, 600);
+    setTimeout(() => {
+        ['r1-c6', 'r1-c7', 'r1-c8'].forEach(id =>
+            document.getElementById('cell-' + id).classList.remove('border-hidden'));
+    }, 1200);
+    setTimeout(() => {
+        if (p3) show('r2-c6', p3);
+        else document.getElementById('cell-r2-c6').innerText = '';
+        show('r2-c7', p2); show('r2-c8', p1);
+    }, 1800);
+    setTimeout(() => {
+        if (p3) { show('r2-c2', p3); document.getElementById('cell-r2-c2').classList.remove('border-hidden'); }
+        else document.getElementById('cell-r2-c2').innerText = '';
+        show('r2-c3', p2); show('r2-c4', p1);
+        document.getElementById('cell-r2-c3').classList.remove('border-hidden');
+        document.getElementById('cell-r2-c4').classList.remove('border-hidden');
+        if (afterDrop) setTimeout(afterDrop, 500);
+    }, 2800);
+}
+// 筆算４用の✗（3けたの積の右＝c5に出す）
+function showWrongX4() { document.getElementById('cell-r2-c5').innerHTML = '<span class="x-mark">✗</span>'; }
+function clearWrongX4() { document.getElementById('cell-r2-c5').innerHTML = ''; }
+
+// 筆算５用：積を右づめで置く（onesCol=一の位の列, row=行）。3けたなら左のマスへはみ出す。ひき算の線も見せる。
+function h5drop(product, onesCol, row) {
+    const digs = [product % 10, Math.floor(product / 10) % 10];
+    if (product >= 100) digs.push(Math.floor(product / 100));
+    digs.forEach((dg, i) => {
+        const el = document.getElementById(`cell-r${row}-c${onesCol - i}`);
+        el.innerText = dg;
+        el.classList.remove('fade-in'); void el.offsetWidth; el.classList.add('fade-in');
+        el.classList.remove('border-hidden');
+    });
+}
+// 筆算５用：立てなおしのときに積と✗を消す（onesCol,row と ✗の列）
+function h5clearProduct(onesCol, row, xCol) {
+    // 一の位・十の位：ひき算の線は残す（border-hiddenで隠すだけ）
+    [onesCol, onesCol - 1].forEach(c => {
+        const el = document.getElementById(`cell-r${row}-c${c}`);
+        if (el) { el.innerText = ''; el.classList.add('border-hidden'); }
+    });
+    // 百の位：3けたのときだけ使う余分なマス。線ごと消す
+    const hun = document.getElementById(`cell-r${row}-c${onesCol - 2}`);
+    if (hun) { hun.innerText = ''; hun.classList.add('border-hidden'); hun.classList.remove('border-bottom'); }
+    document.getElementById(`cell-r${row}-c${xCol}`).innerHTML = '';
+}
+// 任意の位置に✗
+function showWrongXAt(row, col) { document.getElementById(`cell-r${row}-c${col}`).innerHTML = '<span class="x-mark">✗</span>'; }
+
+// 筆算６用：わる数3けた × 商1けた = 積3けた（≤999）。右(c7,c8,c9)にかけ算の筆算 → わり算(c3,c4,c5)へおろす。
+function renderMultBox6(mult, product, afterDrop) {
+    if (mult === undefined) mult = q;
+    if (product === undefined) product = sub1;
+    const vh = Math.floor(divisor / 100), vt = Math.floor(divisor / 10) % 10, vu = divisor % 10;
+    const ph = Math.floor(product / 100), pt = Math.floor(product / 10) % 10, pu = product % 10;
+    const show = (id, val) => {
+        const el = document.getElementById('cell-' + id);
+        el.innerText = val;
+        el.classList.remove('fade-in'); void el.offsetWidth; el.classList.add('fade-in');
+    };
+    show('r0-c7', vh); show('r0-c8', vt); show('r0-c9', vu);
+    ['r1-c6', 'r1-c7', 'r1-c8', 'r1-c9'].forEach(id =>
+        document.getElementById('cell-' + id).classList.add('border-bottom', 'border-hidden'));
+    setTimeout(() => { show('r1-c6', '×'); show('r1-c9', mult); }, 600);
+    setTimeout(() => {
+        ['r1-c6', 'r1-c7', 'r1-c8', 'r1-c9'].forEach(id =>
+            document.getElementById('cell-' + id).classList.remove('border-hidden'));
+    }, 1200);
+    setTimeout(() => { show('r2-c7', ph); show('r2-c8', pt); show('r2-c9', pu); }, 1800);
+    setTimeout(() => {
+        show('r2-c3', ph); show('r2-c4', pt); show('r2-c5', pu);
+        ['r2-c3', 'r2-c4', 'r2-c5'].forEach(id =>
+            document.getElementById('cell-' + id).classList.remove('border-hidden'));
+        if (afterDrop) setTimeout(afterDrop, 500);
+    }, 2800);
+}
+// 筆算６用：補助計算(c7,c8,c9)を消す
+function clearMultBox6() {
+    ['r0-c7', 'r0-c8', 'r0-c9', 'r1-c6', 'r1-c7', 'r1-c8', 'r1-c9', 'r2-c7', 'r2-c8', 'r2-c9'].forEach(id => {
+        const el = document.getElementById('cell-' + id);
+        el.innerText = '';
+        el.classList.remove('border-bottom', 'border-hidden', 'fade-in');
+    });
+}
+
+
+// --- UI更新ロジック ---
+function updateUI() {
+    const s = states[state];
+    document.getElementById('instruction').innerText = s.text;
+    
+    // 指カバーのクリア
+    document.querySelectorAll('.finger-cover').forEach(el => el.remove());
+
+    // ヒントと選択状態のクリア
+    document.querySelectorAll('.hint-glow').forEach(el => el.classList.remove('hint-glow'));
+    document.querySelectorAll('.selected').forEach(el => el.classList.remove('selected'));
+    document.querySelectorAll('.selected-group-left').forEach(el => el.classList.remove('selected-group-left'));
+    document.querySelectorAll('.selected-group-mid').forEach(el => el.classList.remove('selected-group-mid'));
+    document.querySelectorAll('.selected-group-right').forEach(el => el.classList.remove('selected-group-right'));
+    selectedCells = [];
+    
+    // ガイド矢印のクリア
+    document.querySelectorAll('.guide-arrow').forEach(el => el.remove());
+
+    // テンキー表示切替
+    const numpad = document.getElementById('numpad');
+    if (s.type === 'input') {
+        numpad.classList.add('visible');
+    } else {
+        numpad.classList.remove('visible');
+    }
+
+    // ===== 横式（何十÷何十）専用の描画。ここで完結して return =====
+    if (mode === 'yokoshiki') {
+        const rem = dividend - q * divisor;
+        if (s.type === 'input') {
+            const el = document.getElementById(`cell-${s.targetCell}`);
+            if (!el.querySelector('.box-input')) el.innerHTML = '<div class="box-input"></div>';
+        }
+        if (state === 2) {
+            // 「たしかめ」後：まずたしかめのかけ算。あまりがあれば続けてひき算の筆算。
+            renderYokoMult(() => {
+                if (rem === 0) { state = 3; updateUI(); }
+                else { renderYokoSub(() => { state = 3; updateUI(); }); }
+            });
+        }
+        if (s.type === 'finish') {
+            // あまりがあるときは、式の横に「… あまり」を自動で書く
+            if (rem > 0) {
+                const L = yokoLay;
+                const dotCell = document.getElementById(`cell-r1-c${L.quotientCol + 1}`);
+                dotCell.innerText = '…';
+                dotCell.classList.add('yoko-dots');
+                dotCell.classList.remove('fade-in'); void dotCell.offsetWidth; dotCell.classList.add('fade-in');
+                String(rem).split('').forEach((ch, i) => {
+                    const el = document.getElementById(`cell-r1-c${L.quotientCol + 2 + i}`);
+                    el.innerText = ch;
+                    el.classList.remove('fade-in'); void el.offsetWidth; el.classList.add('fade-in');
+                });
+            }
+            document.getElementById('instruction').innerText = answerText();
+            if (!document.getElementById('hanamaru').classList.contains('show')) {
+                showClearEffect();
+            }
+        }
+        return;
+    }
+
+    // ステートごとの描画更新
+    if (state === 1) {
+        if (mode === '2digit_div' || mode === '2digit_div2' || mode === '2digit_div3') {
+            document.getElementById('cell-r0-c2').innerHTML = '<span class="red-text">A</span>';
+            document.getElementById('cell-r0-c3').innerHTML = '<span class="red-text">B</span>';
+        } else if (mode === '2digit') {
+            document.getElementById('cell-r0-c3').innerHTML = '<span class="red-text">A</span>';
+            document.getElementById('cell-r0-c4').innerHTML = '<span class="red-text">B</span>';
+        } else if (mode === '3digit_div1') {
+            document.getElementById('cell-r0-c2').innerHTML = '<span class="red-text">A</span>';
+            document.getElementById('cell-r0-c3').innerHTML = '<span class="red-text">B</span>';
+            document.getElementById('cell-r0-c4').innerHTML = '<span class="red-text">C</span>';
+        } else if (mode === '3digit_div2') {
+            // 筆算５：商は十の位(B)から立つ
+            document.getElementById('cell-r0-c2').innerHTML = '<span class="red-text">A</span>';
+            document.getElementById('cell-r0-c3').innerHTML = '<span class="red-text">B</span>';
+            document.getElementById('cell-r0-c4').innerHTML = '<span class="red-text">C</span>';
+        } else if (mode === '3digit_div3') {
+            // 筆算６：わられる数3けた。商は一の位(C)に立つ
+            document.getElementById('cell-r0-c3').innerHTML = '<span class="red-text">A</span>';
+            document.getElementById('cell-r0-c4').innerHTML = '<span class="red-text">B</span>';
+            document.getElementById('cell-r0-c5').innerHTML = '<span class="red-text">C</span>';
+        } else {
+            document.getElementById('cell-r0-c3').innerHTML = '<span class="red-text">A</span>';
+            document.getElementById('cell-r0-c4').innerHTML = '<span class="red-text">B</span>';
+            document.getElementById('cell-r0-c5').innerHTML = '<span class="red-text">C</span>';
+        }
+    }
+    if (state === 2) {
+        if (mode === '2digit') {
+            document.getElementById('cell-r0-c3').innerHTML = '<div class="box-input"></div>';
+            document.getElementById('cell-r0-c4').innerHTML = ''; // Bを消す
+        } else if (mode === '3digit1') {
+            document.getElementById('cell-r0-c3').innerHTML = '<div class="box-input"></div>';
+            document.getElementById('cell-r0-c4').innerHTML = ''; 
+            document.getElementById('cell-r0-c5').innerHTML = ''; 
+        } else if (mode === '3digit2') {
+            document.getElementById('cell-r0-c3').innerHTML = ''; 
+            document.getElementById('cell-r0-c4').innerHTML = '<div class="box-input"></div>';
+            document.getElementById('cell-r0-c5').innerHTML = ''; 
+        } else if (mode === '2digit_div' || mode === '2digit_div2' || mode === '2digit_div3') {
+            document.getElementById('cell-r0-c2').innerHTML = ''; // Aを消す
+            document.getElementById('cell-r0-c3').innerHTML = '<div class="box-input"></div>';
+            // 指でかくす：わる数の一の位(c1)とわられる数の一の位(c3)を隠す
+            addFingerCover('r1-c1');
+            addFingerCover('r1-c3');
+        } else if (mode === '3digit_div1') {
+            document.getElementById('cell-r0-c2').innerHTML = ''; // Aを消す
+            document.getElementById('cell-r0-c3').innerHTML = ''; // Bを消す
+            document.getElementById('cell-r0-c4').innerHTML = '<div class="box-input"></div>';
+            // 指でかくす：わる数の一の位(c1)とわられる数の一の位(c4)を隠す
+            addFingerCover('r1-c1');
+            addFingerCover('r1-c4');
+        } else if (mode === '3digit_div2') {
+            // 筆算５：十の位(c3)に箱。A/B/Cを消す
+            document.getElementById('cell-r0-c2').innerHTML = '';
+            document.getElementById('cell-r0-c3').innerHTML = '<div class="box-input"></div>';
+            document.getElementById('cell-r0-c4').innerHTML = '';
+            // 指でかくす：わる数の一の位(c1)と、まだ使わないわられる数の十の位(c3)・一の位(c4)
+            addFingerCover('r1-c1');
+            addFingerCover('r1-c3');
+            addFingerCover('r1-c4');
+        } else if (mode === '3digit_div3') {
+            // 筆算６：一の位(c5)に箱。A/B/Cを消す。指かくし：わる数と わられる数の 十の位・一の位を隠す
+            document.getElementById('cell-r0-c3').innerHTML = '';
+            document.getElementById('cell-r0-c4').innerHTML = '';
+            document.getElementById('cell-r0-c5').innerHTML = '<div class="box-input"></div>';
+            addFingerCover('r1-c1'); addFingerCover('r1-c2');
+            addFingerCover('r1-c4'); addFingerCover('r1-c5');
+        }
+    }
+    if (state === 5 && mode !== '3digit_div2' && mode !== '3digit_div3') { // かけ算1完了
+        if (mode === '2digit_div') {
+            // あいたスペースに かけ算の筆算を順番に表示し、最後にわり算へ積をおろす
+            renderMultBox();
+        } else if (mode === '2digit_div2') {
+            // 大きすぎる商(qBig)でかけ算 → 積(sub1Big)をわられる数の下へ → ✗ → やりなおしへ
+            renderMultBox(qBig, sub1Big, () => {
+                showWrongX();
+                setTimeout(() => { state = 6; updateUI(); }, 1600);
+            });
+        } else if (mode === '2digit_div3') {
+            // 見当(qBig1)でかけ算 → 積(sub1Big1)をわられる数の下へ → ✗ → 1回目のやりなおしへ
+            renderMultBox(qBig1, sub1Big1, () => {
+                showWrongX();
+                setTimeout(() => { state = 6; updateUI(); }, 1600);
+            });
+        } else if (mode === '3digit_div1') {
+            // 筆算４：見当(qBig)でかけ算(3けたの積) → わられる数の下へ → ✗ → やりなおしへ
+            renderMult3(qBig, sub1Big, () => {
+                showWrongX4();
+                setTimeout(() => { state = 6; updateUI(); }, 1600);
+            });
+        } else if (mode === '3digit1') {
+            document.getElementById('cell-r2-c3').innerText = sub1;
+            document.getElementById('cell-r2-c3').classList.remove('border-hidden');
+        } else if (mode === '3digit2') {
+            const prod = sub1;
+            document.getElementById('cell-r2-c3').innerText = Math.floor(prod / 10) || '';
+            document.getElementById('cell-r2-c4').innerText = prod % 10;
+            document.getElementById('cell-r2-c3').classList.remove('border-hidden');
+            document.getElementById('cell-r2-c4').classList.remove('border-hidden');
+        } else {
+        // sub1 = q1 * divisor。十の位の積なので、c1を起点に右詰めで表示。
+        // 1桁(8)の場合 → c1に"8"
+        // (sub1は被除数の十の位以下なので必ず1桁になるはず)
+        if (sub1 >= 10) {
+            document.getElementById('cell-r2-c2').innerText = Math.floor(sub1 / 10);
+            document.getElementById('cell-r2-c3').innerText = sub1 % 10;
+            document.getElementById('cell-r2-c2').classList.remove('border-hidden');
+            document.getElementById('cell-r2-c3').classList.remove('border-hidden');
+        } else {
+            document.getElementById('cell-r2-c3').innerText = sub1;
+            document.getElementById('cell-r2-c3').classList.remove('border-hidden');
+        }
+        }
+    }
+    // --- 筆算２ 専用の描画 ---
+    if (state === 6 && mode === '2digit_div2') {
+        // やりなおし：✗・大きすぎた商・大きすぎた積・かけ算の筆算を消す
+        clearWrongX();
+        clearMultBox();
+        ['r2-c1', 'r2-c2', 'r2-c3'].forEach(id => {
+            const el = document.getElementById('cell-' + id);
+            el.innerText = '';
+            el.classList.add('border-hidden');
+            if (id === 'r2-c1') el.classList.remove('border-bottom');
+        });
+        // 立てるところに箱＋うっすら最初に立てた商(qBig)
+        document.getElementById('cell-r0-c3').innerHTML =
+            '<div class="box-input"><span class="ghost-num">' + qBig + '</span></div>';
+    }
+    if (state === 9 && mode === '2digit_div2') {
+        // 正しい商(q)でかけ算の筆算 → わり算へ積(sub1)をおろす
+        renderMultBox(q, sub1);
+    }
+    // --- 筆算３ 専用の描画（立てなおし2回） ---
+    if (state === 6 && mode === '2digit_div3') {
+        // 1回目のやりなおし：✗・見当の商・積・かけ算の筆算を消す → 箱＋うっすら見当(qBig1)
+        clearWrongX();
+        clearMultBox();
+        ['r2-c2', 'r2-c3'].forEach(id => {
+            const el = document.getElementById('cell-' + id);
+            el.innerText = '';
+            el.classList.add('border-hidden');
+        });
+        document.getElementById('cell-r0-c3').innerHTML =
+            '<div class="box-input"><span class="ghost-num">' + qBig1 + '</span></div>';
+    }
+    if (state === 9 && mode === '2digit_div3') {
+        // 修正1の商(qBig2)でかけ算 → 積(sub1Big2)をわられる数の下へ → ✗ → 2回目のやりなおしへ
+        renderMultBox(qBig2, sub1Big2, () => {
+            showWrongX();
+            setTimeout(() => { state = 10; updateUI(); }, 1600);
+        });
+    }
+    if (state === 10 && mode === '2digit_div3') {
+        // 2回目のやりなおし：✗・積・かけ算の筆算を消す → 箱＋うっすら修正1(qBig2)
+        clearWrongX();
+        clearMultBox();
+        ['r2-c2', 'r2-c3'].forEach(id => {
+            const el = document.getElementById('cell-' + id);
+            el.innerText = '';
+            el.classList.add('border-hidden');
+        });
+        document.getElementById('cell-r0-c3').innerHTML =
+            '<div class="box-input"><span class="ghost-num">' + qBig2 + '</span></div>';
+    }
+    if (state === 13 && mode === '2digit_div3') {
+        // 正しい商(q)でかけ算の筆算 → わり算へ積(sub1)をおろす
+        renderMultBox(q, sub1);
+    }
+    if (state === 15 && mode === '2digit_div3') {
+        // あまりを表示（r3-c2,c3）
+        const rem = dividend - sub1;
+        if (rem >= 10) {
+            document.getElementById('cell-r3-c2').innerText = Math.floor(rem / 10);
+            document.getElementById('cell-r3-c3').innerText = rem % 10;
+        } else if (rem > 0) {
+            document.getElementById('cell-r3-c3').innerText = rem;
+        }
+    }
+    // --- 筆算４ 専用の描画（3けた÷2けた・1回修正） ---
+    if (state === 6 && mode === '3digit_div1') {
+        // やりなおし：✗・見当の商・積(3けた)・かけ算の筆算を消す → 箱＋うっすら見当(qBig)
+        clearWrongX4();
+        clearMultBox();
+        ['r2-c2', 'r2-c3', 'r2-c4'].forEach(id => {
+            const el = document.getElementById('cell-' + id);
+            el.innerText = '';
+            el.classList.add('border-hidden');
+        });
+        document.getElementById('cell-r0-c4').innerHTML =
+            '<div class="box-input"><span class="ghost-num">' + qBig + '</span></div>';
+    }
+    if (state === 9 && mode === '3digit_div1') {
+        // 正しい商(q)でかけ算の筆算(3けたの積) → わり算へ積(sub1)をおろす
+        renderMult3(q, sub1);
+    }
+    if (state === 11 && mode === '3digit_div1') {
+        // あまりを表示（わられる数3けた − 積、右づめで c3,c4 または c4）
+        const rem = dividend - sub1;
+        if (rem >= 10) {
+            document.getElementById('cell-r3-c3').innerText = Math.floor(rem / 10);
+            document.getElementById('cell-r3-c4').innerText = rem % 10;
+        } else if (rem > 0) {
+            document.getElementById('cell-r3-c4').innerText = rem;
+        }
+    }
+    // ===== 筆算６ 専用の描画（3けた÷3けた・商1けた・見当✗→立てなおし） =====
+    if (state === 5 && mode === '3digit_div3') {
+        // 見当(qBig)でかけ算の筆算（右）→ 積(3けた)をわられる数の下に → ✗(c6) → 立てなおしへ
+        renderMultBox6(qBig, sub1Big, () => {
+            showWrongXAt(2, 6);
+            setTimeout(() => { state = 6; updateUI(); }, 1600);
+        });
+    }
+    if (state === 6 && mode === '3digit_div3') {
+        // 立てなおし：✗・大きすぎた積(c3,c4,c5)・かけ算の筆算を消す → 箱＋うっすら見当(qBig)
+        clearMultBox6();
+        ['r2-c3', 'r2-c4', 'r2-c5'].forEach(id => {
+            const el = document.getElementById('cell-' + id);
+            el.innerText = ''; el.classList.add('border-hidden');
+        });
+        document.getElementById('cell-r2-c6').innerHTML = '';
+        document.getElementById('cell-r0-c5').innerHTML =
+            '<div class="box-input"><span class="ghost-num">' + qBig + '</span></div>';
+    }
+    if (state === 9 && mode === '3digit_div3') {
+        // 正しい商(q)でかけ算の筆算（右）→ 積(3けた)をわられる数の下に＋ひき算の線
+        renderMultBox6(q, sub1);
+    }
+    if (state === 11 && mode === '3digit_div3') {
+        // あまり（わられる数3けた − 積）を右づめで r3 に
+        const rem = dividend - sub1;
+        if (rem >= 100) {
+            document.getElementById('cell-r3-c3').innerText = Math.floor(rem / 100);
+            document.getElementById('cell-r3-c4').innerText = Math.floor(rem / 10) % 10;
+            document.getElementById('cell-r3-c5').innerText = rem % 10;
+        } else if (rem >= 10) {
+            document.getElementById('cell-r3-c4').innerText = Math.floor(rem / 10);
+            document.getElementById('cell-r3-c5').innerText = rem % 10;
+        } else if (rem > 0) {
+            document.getElementById('cell-r3-c5').innerText = rem;
+        }
+    }
+    if (state === 5 && mode === '3digit_div2') {
+        // 見当(est1)でかけ算の筆算（右）→ 積を上2けたの下におろす（右づめ, c3基準）→ ✗ → 立てなおしへ
+        renderMultBox(est1, est1 * divisor, () => {
+            showWrongXAt(2, 4);
+            setTimeout(() => { state = 6; updateUI(); }, 1600);
+        }, 2, 3);
+    }
+    if (state === 6 && mode === '3digit_div2') {
+        // 立てなおし：✗・大きすぎた積・かけ算の筆算を消す → 箱＋うっすら見当(est1)
+        clearMultBox();
+        h5clearProduct(3, 2, 4);
+        document.getElementById('cell-r0-c3').innerHTML =
+            '<div class="box-input"><span class="ghost-num">' + est1 + '</span></div>';
+    }
+    if (state === 9 && mode === '3digit_div2') {
+        // 正しい商(q1)でかけ算の筆算（右）→ 積1を上2けたの下に＋ひき算1の線
+        renderMultBox(q1, sub1, null, 2, 3);
+    }
+    if (state === 11 && mode === '3digit_div2') {
+        // ひき算1のあと、差1（1けた）を c3 に
+        const diff1 = Math.floor(dividend / 10) - sub1;
+        document.getElementById('cell-r3-c3').innerText = diff1;
+    }
+    if (state === 12 && mode === '3digit_div2') {
+        // わられる数の一の位をドラッグできるように（→ r3-c4）
+        const numToDrop = dividend % 10;
+        document.getElementById('cell-r1-c4').innerHTML =
+            `<span class="draggable-span" id="drag-target-span">${numToDrop}</span>`;
+        initDragDrop('drag-target-span', 'cell-r3-c4');
+    }
+    if (state === 13 && mode === '3digit_div2') {
+        // おろした数を確定
+        const numToDrop = dividend % 10;
+        document.getElementById('cell-r1-c4').innerText = numToDrop;
+        document.getElementById('cell-r3-c4').innerText = numToDrop;
+    }
+    // --- 2サイクル目（一の位）---
+    if (state === 14 && mode === '3digit_div2') {
+        // 一の位(c4)に箱＋指かくし（わる数の一の位と、おろしてできた数の一の位）
+        // ★十の位のかけ算の筆算（右）はそのまま残す。一の位の補助計算は1行あけて下に書く
+        document.getElementById('cell-r0-c4').innerHTML = '<div class="box-input"></div>';
+        addFingerCover('r1-c1');
+        addFingerCover('r3-c4');
+    }
+    if (state === 17 && mode === '3digit_div2') {
+        // 見当(est2)でかけ算の筆算（右・1行あけて下）→ 積を おろした2けたの下に（右づめ, c4基準）→ ✗ → 立てなおしへ
+        renderMultBox(est2, est2 * divisor, () => {
+            showWrongXAt(4, 5);
+            setTimeout(() => { state = 18; updateUI(); }, 1600);
+        }, 4, 4, 4);
+    }
+    if (state === 18 && mode === '3digit_div2') {
+        // 立てなおし：✗・大きすぎた積・一の位の補助計算だけを消す（十の位の補助計算は残す）
+        clearMultBox(4);
+        h5clearProduct(4, 4, 5);
+        document.getElementById('cell-r0-c4').innerHTML =
+            '<div class="box-input"><span class="ghost-num">' + est2 + '</span></div>';
+    }
+    if (state === 21 && mode === '3digit_div2') {
+        // 正しい商(q2)でかけ算の筆算（右・1行あけて下）→ 積2を おろした2けたの下に＋ひき算2の線
+        renderMultBox(q2, sub2, null, 4, 4, 4);
+    }
+    if (state === 23 && mode === '3digit_div2') {
+        // あまり（最後のひき算の結果）を r5 に。0でも表示
+        const rem = dividend - q * divisor;
+        if (rem >= 10) {
+            document.getElementById('cell-r5-c3').innerText = Math.floor(rem / 10);
+            document.getElementById('cell-r5-c4').innerText = rem % 10;
+        } else {
+            document.getElementById('cell-r5-c4').innerText = rem;
+        }
+    }
+    if (state === 11 && mode === '2digit_div2') {
+        // あまりを表示（r3-c2,c3）
+        const rem = dividend - sub1;
+        if (rem >= 10) {
+            document.getElementById('cell-r3-c2').innerText = Math.floor(rem / 10);
+            document.getElementById('cell-r3-c3').innerText = rem % 10;
+        } else {
+            document.getElementById('cell-r3-c3').innerText = rem;
+        }
+    }
+    if (state === 7 && mode !== '3digit_div2' && mode !== '3digit_div3') { // ひき算1完了
+        if (mode === '2digit_div') {
+            // わられる数 − 積 ＝ あまり（0でも表示、2桁なら c2,c3）
+            const rem = dividend - sub1;
+            if (rem >= 10) {
+                document.getElementById('cell-r3-c2').innerText = Math.floor(rem / 10);
+                document.getElementById('cell-r3-c3').innerText = rem % 10;
+            } else {
+                document.getElementById('cell-r3-c3').innerText = rem;
+            }
+        } else if (mode === '3digit1') {
+            const minuend = Math.floor(dividend / 100);
+            const diff = minuend - sub1;
+            document.getElementById('cell-r3-c3').innerText = diff > 0 ? diff : '';
+        } else if (mode === '3digit2') {
+            const minuend = Math.floor(dividend / 10);
+            const diff = minuend - sub1;
+            document.getElementById('cell-r3-c4').innerText = diff > 0 ? diff : '';
+        } else {
+        // 被除数の十の位 - sub1（1桁前提）
+        const minuend = Math.floor(dividend / 10);
+        const diff = minuend - sub1;
+        document.getElementById('cell-r3-c3').innerText = diff > 0 ? diff : '';
+        }
+    }
+    if (state === 8) { // おろす待機
+        if (mode === '3digit1') {
+            const cell = document.getElementById('cell-r1-c4');
+            const numToDrop = Math.floor((dividend % 100) / 10);
+            cell.innerHTML = `<span class="draggable-span" id="drag-target-span">${numToDrop}</span>`;
+            initDragDrop('drag-target-span', 'cell-r3-c4');
+        } else if (mode === '3digit2') {
+            const cell = document.getElementById('cell-r1-c5');
+            const numToDrop = dividend % 10;
+            cell.innerHTML = `<span class="draggable-span" id="drag-target-span">${numToDrop}</span>`;
+            initDragDrop('drag-target-span', 'cell-r3-c5');
+        } else if (mode === '2digit') {
+        const cell = document.getElementById('cell-r1-c4');
+        cell.innerHTML = `<span class="draggable-span" id="drag-target-span">${dividend % 10}</span>`;
+        initDragDrop('drag-target-span', 'cell-r3-c4');
+        }
+    }
+    if (state === 9) { // おろす完了
+        if (mode === '3digit1') {
+            const numToDrop = Math.floor((dividend % 100) / 10);
+            document.getElementById('cell-r1-c4').innerText = numToDrop;
+            document.getElementById('cell-r3-c4').innerText = numToDrop;
+        } else if (mode === '3digit2') {
+            const numToDrop = dividend % 10;
+            document.getElementById('cell-r1-c5').innerText = numToDrop;
+            document.getElementById('cell-r3-c5').innerText = numToDrop;
+        } else if (mode === '2digit') {
+        document.getElementById('cell-r1-c4').innerText = dividend % 10;
+        document.getElementById('cell-r3-c4').innerText = dividend % 10;
+        }
+    }
+    if (state === 10) { // 2回目のたてる
+        if (mode === '3digit2') {
+            document.getElementById('cell-r0-c5').innerHTML = '<div class="box-input"></div>';
+        } else if (mode === '2digit') {
+        document.getElementById('cell-r0-c4').innerHTML = '<div class="box-input"></div>';
+        }
+    }
+    if (state === 13 && mode !== '2digit_div3' && mode !== '3digit_div2') { // かけ算2完了
+        if (mode === '3digit1') {
+            const prod = sub2;
+            document.getElementById('cell-r4-c3').innerText = Math.floor(prod / 10) || '';
+            document.getElementById('cell-r4-c4').innerText = prod % 10;
+            document.getElementById('cell-r4-c3').classList.remove('border-hidden');
+            document.getElementById('cell-r4-c4').classList.remove('border-hidden');
+        } else if (mode === '3digit2') {
+            const prod = sub2;
+            document.getElementById('cell-r4-c4').innerText = Math.floor(prod / 10) || '';
+            document.getElementById('cell-r4-c5').innerText = prod % 10;
+            document.getElementById('cell-r4-c4').classList.remove('border-hidden');
+            document.getElementById('cell-r4-c5').classList.remove('border-hidden');
+        } else {
+        const prod = q2 * divisor;
+        document.getElementById('cell-r4-c3').innerText = Math.floor(prod / 10) || '';
+        document.getElementById('cell-r4-c4').innerText = prod % 10;
+        document.getElementById('cell-r4-c3').classList.remove('border-hidden');
+        document.getElementById('cell-r4-c4').classList.remove('border-hidden');
+        }
+    }
+    if (state === 15 && mode !== '2digit_div3' && mode !== '3digit_div2') { // ひき算2完了 (クリア)
+        if (mode === '3digit1') {
+            const minuend1 = (parseInt(document.getElementById('cell-r3-c3').innerText) || 0) * 10 
+                           + (parseInt(document.getElementById('cell-r3-c4').innerText) || 0);
+            const diff = minuend1 - sub2;
+            document.getElementById('cell-r5-c4').innerText = diff > 0 ? diff : '';
+        } else if (mode === '3digit2') {
+            document.getElementById('cell-r5-c5').innerText = '0';
+            document.getElementById('instruction').innerText = answerText();
+            showClearEffect();
+        } else {
+        document.getElementById('cell-r5-c4').innerText = '0';
+        document.getElementById('instruction').innerText = answerText();
+        showClearEffect();
+        }
+    }
+    
+    // 3桁①用の追加処理
+    if (mode === '3digit1') {
+        if (state === 16) {
+            const cell = document.getElementById('cell-r1-c5');
+            const numToDrop = dividend % 10;
+            cell.innerHTML = `<span class="draggable-span" id="drag-target-span">${numToDrop}</span>`;
+            initDragDrop('drag-target-span', 'cell-r5-c5');
+        }
+        if (state === 17) {
+            const numToDrop = dividend % 10;
+            document.getElementById('cell-r1-c5').innerText = numToDrop;
+            document.getElementById('cell-r5-c5').innerText = numToDrop;
+        }
+        if (state === 18) {
+            document.getElementById('cell-r0-c5').innerHTML = '<div class="box-input"></div>';
+        }
+        if (state === 21) {
+            const prod = sub3;
+            document.getElementById('cell-r6-c4').innerText = Math.floor(prod / 10) || '';
+            document.getElementById('cell-r6-c5').innerText = prod % 10;
+            document.getElementById('cell-r6-c4').classList.remove('border-hidden');
+            document.getElementById('cell-r6-c5').classList.remove('border-hidden');
+        }
+        if (state === 23) {
+            document.getElementById('cell-r7-c5').innerText = '0';
+            document.getElementById('instruction').innerText = answerText();
+            showClearEffect();
+        }
+    }
+
+    if (s.type === 'finish') {
+        document.getElementById('instruction').innerText = answerText();
+        if (!document.getElementById('hanamaru').classList.contains('show')) {
+            showClearEffect();
+        }
+    }
+
+    // --- 追加: ガイド矢印とチュートリアル処理 ---
+    if (s.type === 'drag_drop') {
+        const targetCell = document.getElementById(`cell-${s.target}`);
+        if (targetCell && !targetCell.querySelector('.guide-arrow')) {
+            const arrow = document.createElement('div');
+            arrow.className = 'guide-arrow';
+            arrow.innerText = '↓';
+            targetCell.appendChild(arrow);
+        }
+    }
+
+    if (document.getElementById('tutorial-mode').checked && s.type !== 'finish') {
+        setTimeout(() => document.getElementById('btn-hint').click(), 100);
+    }
+}
+
+// --- ドラッグ＆ドロップ実装 ---
+function initDragDrop(spanId, targetId) {
+    const span = document.getElementById(spanId);
+    let isDragging = false;
+    let startX, startY;
+    
+    span.onpointerdown = (e) => {
+        if (states[state].type !== 'drag_drop') return;
+        isDragging = true;
+        span.setPointerCapture(e.pointerId);
+        startX = e.clientX;
+        startY = e.clientY;
+        span.style.position = 'relative';
+        span.classList.remove('hint-glow');
+        playSound('click');
+    };
+    
+    span.onpointermove = (e) => {
+        if (!isDragging) return;
+        const dy = e.clientY - startY;
+        span.style.transform = `translate(0px, ${dy}px)`;
+    };
+    
+    span.onpointerup = (e) => {
+        if (!isDragging) return;
+        isDragging = false;
+        span.releasePointerCapture(e.pointerId);
+        
+        const targetEl = document.getElementById(targetId);
+        const targetRect = targetEl.getBoundingClientRect();
+        const spanRect = span.getBoundingClientRect();
+        
+        // 中心点距離によるスナップ判定
+        const spanCX = spanRect.left + spanRect.width / 2;
+        const spanCY = spanRect.top + spanRect.height / 2;
+        const targetCX = targetRect.left + targetRect.width / 2;
+        const targetCY = targetRect.top + targetRect.height / 2;
+        
+        if (Math.hypot(spanCX - targetCX, spanCY - targetCY) < 50) {
+            playSound('click');
+            state++;
+            updateUI();
+        } else {
+            handleWrong(spanId);
+            span.style.transition = 'transform 0.3s';
+            span.style.transform = 'translate(0px, 0px)';
+            setTimeout(() => { span.style.transition = ''; }, 300);
+        }
+    };
+}
+
+// --- 不正解・クリア演出 ---
+function handleWrong(elementId, expectedAction) {
+    playSound('wrong');
+    const popup = document.getElementById('popup');
+    popup.classList.add('show');
+    setTimeout(() => popup.classList.remove('show'), 1000);
+    
+    // --- 追加: ヒントの光をクリア（誤タップ時に残らないように） ---
+    document.querySelectorAll('.hint-glow').forEach(el => el.classList.remove('hint-glow'));
+    
+    // --- 追加: エラー記録とコンボリセット ---
+    comboCount = 0;
+    document.getElementById('combo-count').innerText = comboCount;
+    const s = states[state];
+    if (s) {
+        // actionボタン誤押下時は、本来押すべき行為（s.expect）で分類
+        if (s.type === 'action' && s.expect && errorStats[s.expect] !== undefined) {
+            errorStats[s.expect]++;
+        }
+        // 商を立てる位置を選ぶステップ（click_cell）はたてるに分類
+        else if (s.type === 'click_cell') {
+            errorStats.tateru++;
+        }
+        // それ以外は指示文のキーワードで分類
+        else if (s.text.includes("たて")) errorStats.tateru++;
+        else if (s.text.includes("かけ")) errorStats.kakeru++;
+        else if (s.text.includes("ひき")) errorStats.hiku++;
+        else if (s.text.includes("おろ")) errorStats.orosu++;
+        else errorStats.other++;
+    }
+
+    if (elementId) {
+        const el = document.getElementById(elementId);
+        if (el) {
+            el.classList.remove('shake');
+            void el.offsetWidth; // reflow
+            el.classList.add('shake');
+        }
+    }
+}
+
+function showClearEffect() {
+    document.getElementById('hanamaru').classList.add('show');
+    playSound('correct');
+    setTimeout(() => playSound('correct'), 300);
+    
+    if (typeof confetti !== 'undefined') {
+        confetti({
+            particleCount: 150,
+            spread: 80,
+            origin: { y: 0.6 },
+            colors: ['#ffeb3b', '#ff9800', '#4caf50', '#00bcd4', '#e91e63']
+        });
+    }
+
+    // --- 追加: タイム測定、アドバイス、コンボ ---
+    const timeTaken = Math.floor((Date.now() - startTime) / 1000);
+    let advice = "";
+    let maxError = 0;
+    let worstType = "";
+    for (const [key, val] of Object.entries(errorStats)) {
+        if (val > maxError) {
+            maxError = val;
+            worstType = key;
+        }
+    }
+    
+    if (maxError > 0) {
+        if (worstType === 'tateru') advice = "「たてる」をもう少しがんばろう！";
+        else if (worstType === 'kakeru') advice = "「かける」の計算に気をつけよう！";
+        else if (worstType === 'hiku') advice = "「ひき算」をていねいにやろう！";
+        else if (worstType === 'orosu') advice = "「おろす」場所をたしかめよう！";
+        else advice = "つぎはノーミスをめざそう！";
+    } else {
+        advice = "かんぺき！すばらしい！";
+    }
+
+    comboCount++;
+    document.getElementById('combo-count').innerText = comboCount;
+    const comboSpan = document.getElementById('combo-count');
+    comboSpan.style.transform = 'scale(1.5)';
+    setTimeout(() => comboSpan.style.transform = 'scale(1)', 300);
+
+    setTimeout(() => {
+        document.getElementById('instruction').innerHTML = `${answerText()}<br><span style="font-size: 1rem; color: #d32f2f;">🕒 ${timeTaken}秒！ ${advice}</span>`;
+    }, 500);
+}
+
+// --- イベントリスナー ---
+['tateru', 'kakeru', 'hiku', 'orosu'].forEach(action => {
+    document.getElementById(`btn-${action}`).addEventListener('click', () => {
+        const s = states[state];
+        if (s.type === 'wait') return; // やりなおし演出中は操作を無視
+        if (s.type === 'action' && s.expect === action) {
+            playSound('click');
+            state++;
+            updateUI();
+        } else {
+            handleWrong(`btn-${action}`);
+        }
+    });
+});
+
+document.querySelectorAll('.cell').forEach(cell => {
+    cell.addEventListener('click', () => {
+        const s = states[state];
+        const cellId = cell.id.replace('cell-', '');
+        
+        if (s.type === 'click_cell') {
+            if (cellId === s.expect) {
+                playSound('click');
+                state++;
+                updateUI();
+            } else {
+                handleWrong(cell.id);
+            }
+        } else if (s.type === 'click_cells') {
+            if (!s.expect.includes(cellId)) {
+                handleWrong(cell.id);
+                return;
+            }
+            if (!selectedCells.includes(cellId)) {
+                selectedCells.push(cellId);
+                cell.classList.add('selected');
+                playSound('click');
+            }
+            if (s.expect.every(id => selectedCells.includes(id))) {
+                setTimeout(() => {
+                    state++;
+                    updateUI();
+                }, 300);
+            }
+        } else if (s.type === 'click_cells_group') {
+            const allValid = s.expectGroups.flat();
+            if (!allValid.includes(cellId)) {
+                handleWrong(cell.id);
+                return;
+            }
+            
+            const targetGroup = s.expectGroups.find(group => group.includes(cellId));
+            const validCells = targetGroup.filter(id => {
+                const el = document.getElementById(`cell-${id}`);
+                const text = el.textContent || el.innerText || '';
+                return text.trim() !== '';
+            });
+
+            let isNewSelection = false;
+            
+            validCells.forEach(id => {
+                if (!selectedCells.includes(id)) {
+                    selectedCells.push(id);
+                    isNewSelection = true;
+                }
+            });
+
+            if (isNewSelection) {
+                playSound('click');
+                if (validCells.length === 1) {
+                    document.getElementById(`cell-${validCells[0]}`).classList.add('selected');
+                } else if (validCells.length >= 2) {
+                    // 2けた・3けたどちらでも、左端→中央→右端でカプセル型の選択マークを作る
+                    validCells.forEach((id, i) => {
+                        const cls = i === 0 ? 'selected-group-left'
+                                  : i === validCells.length - 1 ? 'selected-group-right'
+                                  : 'selected-group-mid';
+                        document.getElementById(`cell-${id}`).classList.add(cls);
+                    });
+                }
+            }
+
+            const isCorrect = s.expectGroups.every(group => {
+                const groupValidCells = group.filter(id => {
+                    const el = document.getElementById(`cell-${id}`);
+                    const text = el.textContent || el.innerText || '';
+                    return text.trim() !== '';
+                });
+                if (groupValidCells.length === 0) return true;
+                return groupValidCells.every(id => selectedCells.includes(id));
+            });
+
+            if (isCorrect) {
+                setTimeout(() => {
+                    state++;
+                    updateUI();
+                }, 300);
+            }
+        }
+    });
+});
+
+document.querySelectorAll('.num-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const s = states[state];
+        if (s.type === 'input') {
+            const val = parseInt(btn.dataset.val, 10);
+            if (val === s.expect()) {
+                playSound('click');
+                document.getElementById(`cell-${s.targetCell}`).innerText = val;
+                state++;
+                updateUI();
+            } else if (s.altExpect && val === s.altExpect()) {
+                // 別解（例：筆算2で最初から正しい商）→ 修正を飛ばして指定の状態へ
+                playSound('click');
+                document.getElementById(`cell-${s.targetCell}`).innerText = val;
+                state = s.altNext;
+                updateUI();
+            } else if (Array.isArray(s.alts) && s.alts.some(a => val === a.expect())) {
+                // 別解（複数）：例 筆算3で見当より小さい途中の商や、最初から正しい商
+                const hit = s.alts.find(a => val === a.expect());
+                playSound('click');
+                document.getElementById(`cell-${s.targetCell}`).innerText = val;
+                state = hit.next;
+                updateUI();
+            } else {
+                handleWrong('numpad');
+            }
+        }
+    });
+});
+
+document.getElementById('btn-hint').addEventListener('click', () => {
+    const s = states[state];
+    if (mode === 'yokoshiki') {
+        // 横式のヒント：一の位の0を指でかくす（かんたんなわり算に見える）
+        addFingerCover(`r1-c${yokoLay.dividendOnes}`);
+        addFingerCover(`r1-c${yokoLay.divisorOnes}`);
+        return;
+    }
+    if (s.type === 'action') {
+        document.getElementById(`btn-${s.expect}`).classList.add('hint-glow');
+    } else if (s.type === 'click_cell') {
+        document.getElementById(`cell-${s.expect}`).classList.add('hint-glow');
+    } else if (s.type === 'click_cells') {
+        s.expect.forEach(id => {
+            if (!selectedCells.includes(id)) {
+                document.getElementById(`cell-${id}`).classList.add('hint-glow');
+            }
+        });
+    } else if (s.type === 'click_cells_group') {
+        s.expectGroups.flat().forEach(id => {
+            if (!selectedCells.includes(id)) {
+                document.getElementById(`cell-${id}`).classList.add('hint-glow');
+            }
+        });
+    } else if (s.type === 'input') {
+        document.querySelector(`.num-btn[data-val="${s.expect()}"]`).classList.add('hint-glow');
+        document.getElementById(`cell-${s.targetCell}`).querySelector('.box-input').classList.add('hint-glow');
+    } else if (s.type === 'drag_drop') {
+        document.getElementById('drag-target-span').classList.add('hint-glow');
+        document.getElementById(`cell-${s.target}`).classList.add('hint-glow');
+    }
+});
+
+document.getElementById('btn-tashikame').addEventListener('click', () => {
+    // 横式でのみ有効。「たしかめ」待ち（state1）のときだけ進める
+    if (mode !== 'yokoshiki') return;
+    const s = states[state];
+    if (s && s.type === 'action' && s.expect === 'tashikame') {
+        playSound('click');
+        state++;
+        updateUI();
+    }
+});
+
+document.getElementById('btn-reset').addEventListener('click', initGame);
+
+let currentMode = '2digit_div';
+document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentMode = btn.dataset.mode;
+        initGame();
+    });
+});
+
+// --- 初期化 ---
+function initGame() {
+    mode = currentMode;
+    generateProblem();
+    generateStates();
+    state = 0;
+    selectedCells = [];
+    
+    // --- 追加: リセット処理 ---
+    startTime = Date.now();
+    errorStats = { tateru: 0, kakeru: 0, hiku: 0, orosu: 0, other: 0 };
+    document.querySelectorAll('.guide-arrow').forEach(el => el.remove());
+    
+    // UIリセット
+    document.querySelectorAll('.cell').forEach(cell => {
+        cell.innerText = '';
+        cell.innerHTML = '';
+        cell.className = 'cell';
+    });
+    document.getElementById('hanamaru').classList.remove('show');
+
+    // 横式モードのときはグリッドを3列広げ、たてる〜おろすを消して「たしかめ」を出す
+    const yoko = (mode === 'yokoshiki');
+    document.querySelector('.grid').classList.toggle('yoko', yoko);
+    document.querySelector('.controls').classList.toggle('yoko-mode', yoko);
+    
+    // 罫線の初期設定（商の下線：c1, c2 の下）
+    if (mode === '3digit1') {
+        [3, 4, 5].forEach(c => document.getElementById(`cell-r0-c${c}`).classList.add('border-bottom'));
+        [3, 4].forEach(c => {
+            document.getElementById(`cell-r2-c${c}`).classList.add('border-bottom', 'border-hidden');
+            document.getElementById(`cell-r4-c${c}`).classList.add('border-bottom', 'border-hidden');
+        });
+        [4, 5].forEach(c => document.getElementById(`cell-r6-c${c}`).classList.add('border-bottom', 'border-hidden'));
+    } else if (mode === '3digit2') {
+        [3, 4, 5].forEach(c => document.getElementById(`cell-r0-c${c}`).classList.add('border-bottom'));
+        [3, 4].forEach(c => document.getElementById(`cell-r2-c${c}`).classList.add('border-bottom', 'border-hidden'));
+        [4, 5].forEach(c => document.getElementById(`cell-r4-c${c}`).classList.add('border-bottom', 'border-hidden'));
+    } else if (mode === '2digit_div' || mode === '2digit_div2' || mode === '2digit_div3') {
+        // ２けたでわる：商の下線 r0-c2,c3／ひき算の線 r2-c2,c3
+        [2, 3].forEach(c => document.getElementById(`cell-r0-c${c}`).classList.add('border-bottom'));
+        [2, 3].forEach(c => document.getElementById(`cell-r2-c${c}`).classList.add('border-bottom', 'border-hidden'));
+    } else if (mode === '3digit_div1') {
+        // 筆算４：わられる数3けた。商の下線 r0-c2,c3,c4／ひき算の線 r2-c2,c3,c4
+        [2, 3, 4].forEach(c => document.getElementById(`cell-r0-c${c}`).classList.add('border-bottom'));
+        [2, 3, 4].forEach(c => document.getElementById(`cell-r2-c${c}`).classList.add('border-bottom', 'border-hidden'));
+    } else if (mode === '3digit_div2') {
+        // 筆算５：商2けた。商の下線(かっこの上線) r0-c2,c3,c4／ひき算1の線 r2-c2,c3／ひき算2の線 r4-c3,c4
+        [2, 3, 4].forEach(c => document.getElementById(`cell-r0-c${c}`).classList.add('border-bottom'));
+        [2, 3].forEach(c => document.getElementById(`cell-r2-c${c}`).classList.add('border-bottom', 'border-hidden'));
+        [3, 4].forEach(c => document.getElementById(`cell-r4-c${c}`).classList.add('border-bottom', 'border-hidden'));
+    } else if (mode === '3digit_div3') {
+        // 筆算６：3けた÷3けた。かっこの上線 r0-c3,c4,c5／ひき算の線 r2-c3,c4,c5
+        [3, 4, 5].forEach(c => document.getElementById(`cell-r0-c${c}`).classList.add('border-bottom'));
+        [3, 4, 5].forEach(c => document.getElementById(`cell-r2-c${c}`).classList.add('border-bottom', 'border-hidden'));
+    } else if (mode === 'yokoshiki') {
+        // 横式：あらかじめ引く線はなし（ひき算の線は計算のときに出す）
+    } else {
+    [3, 4].forEach(c => document.getElementById(`cell-r0-c${c}`).classList.add('border-bottom'));
+    // 積の下線（ひき算の線）：c1, c2 の下
+    [3, 4].forEach(c => {
+        document.getElementById(`cell-r2-c${c}`).classList.add('border-bottom', 'border-hidden');
+        document.getElementById(`cell-r4-c${c}`).classList.add('border-bottom', 'border-hidden');
+    });
+    }
+
+    // 「）」の位置：わられる数が始まるセルの左端に付ける
+    const isYoko = (mode === 'yokoshiki');
+    const isTwoDigitDiv = (mode === '2digit_div' || mode === '2digit_div2' || mode === '2digit_div3');
+    const is3d2dDiv = (mode === '3digit_div1' || mode === '3digit_div2');
+    const is3d3dDiv = (mode === '3digit_div3');
+    if (!isYoko) {
+        document.getElementById((isTwoDigitDiv || is3d2dDiv) ? 'cell-r1-c2' : (is3d3dDiv ? 'cell-r1-c3' : 'cell-r1-c3')).classList.add('paren-left');
+    }
+
+    // 問題のセット
+    if (isYoko) {
+        // 横式：1行あけて r1、左端1マスあけて c1 から「d… ÷ v… =」を並べる（商は入力）
+        const L = yokoLay;
+        L.ddStr.split('').forEach((ch, i) => { document.getElementById(`cell-r1-c${L.dividendCols[i]}`).innerText = ch; });
+        document.getElementById(`cell-r1-c${L.divCol}`).innerText = '÷';
+        L.dvStr.split('').forEach((ch, i) => { document.getElementById(`cell-r1-c${L.divisorCols[i]}`).innerText = ch; });
+        document.getElementById(`cell-r1-c${L.eqCol}`).innerText = '=';
+    } else if (isTwoDigitDiv) {
+        // わる数（2桁）: 十の位→c0, 一の位→c1（左端そろえ）
+        document.getElementById('cell-r1-c0').innerText = Math.floor(divisor / 10);
+        document.getElementById('cell-r1-c1').innerText = divisor % 10;
+        // わられる数（2桁）: 十の位→c2, 一の位→c3
+        document.getElementById('cell-r1-c2').innerText = Math.floor(dividend / 10);
+        document.getElementById('cell-r1-c3').innerText = dividend % 10;
+    } else if (is3d2dDiv) {
+        // 筆算４/５：わる数（2桁）c0,c1／わられる数（3桁）c2(百),c3(十),c4(一)
+        document.getElementById('cell-r1-c0').innerText = Math.floor(divisor / 10);
+        document.getElementById('cell-r1-c1').innerText = divisor % 10;
+        document.getElementById('cell-r1-c2').innerText = Math.floor(dividend / 100);
+        document.getElementById('cell-r1-c3').innerText = Math.floor((dividend % 100) / 10);
+        document.getElementById('cell-r1-c4').innerText = dividend % 10;
+    } else if (is3d3dDiv) {
+        // 筆算６：わる数（3桁）c0(百),c1(十),c2(一)／わられる数（3桁）c3(百),c4(十),c5(一)
+        document.getElementById('cell-r1-c0').innerText = Math.floor(divisor / 100);
+        document.getElementById('cell-r1-c1').innerText = Math.floor((divisor % 100) / 10);
+        document.getElementById('cell-r1-c2').innerText = divisor % 10;
+        document.getElementById('cell-r1-c3').innerText = Math.floor(dividend / 100);
+        document.getElementById('cell-r1-c4').innerText = Math.floor((dividend % 100) / 10);
+        document.getElementById('cell-r1-c5').innerText = dividend % 10;
+    } else {
+    document.getElementById('cell-r1-c2').innerText = divisor;
+    if (mode !== '2digit') {
+        document.getElementById('cell-r1-c3').innerText = Math.floor(dividend / 100);
+        document.getElementById('cell-r1-c4').innerText = Math.floor((dividend % 100) / 10);
+        document.getElementById('cell-r1-c5').innerText = dividend % 10;
+    } else {
+    document.getElementById('cell-r1-c3').innerText = Math.floor(dividend / 10);
+    document.getElementById('cell-r1-c4').innerText = dividend % 10;
+    }
+    }
+    
+    updateUI();
+}
+
+// 起動
+// 横式用に、各行へ c10・c11・c12 の3マスを追加（グリッドは横式のときだけ13列表示）
+function addYokoColumns() {
+    for (let r = 0; r < 8; r++) {
+        let anchor = document.getElementById(`cell-r${r}-c9`);
+        if (!anchor) continue;
+        for (let c = 10; c <= 12; c++) {
+            if (document.getElementById(`cell-r${r}-c${c}`)) continue;
+            const el = document.createElement('div');
+            el.className = 'cell';
+            el.id = `cell-r${r}-c${c}`;
+            anchor.after(el);
+            anchor = el;
+        }
+    }
+}
+
+window.onload = () => { addYokoColumns(); initGame(); };
+</script>
+</body>
+</html>
