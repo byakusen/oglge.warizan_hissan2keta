@@ -73,6 +73,19 @@
         box-shadow: 0 3px 0 #4a3aad;
     }
     /* 「仮の商」タブだけ色を変える */
+    .tab-btn.soon-tab {
+        color: #9e9e9e;
+        background: #f5f5f5;
+        border-color: #dcdcdc;
+        box-shadow: 0 2px 0 #dcdcdc;
+    }
+    .tab-btn.soon-tab:hover { background: #eeeeee; }
+    .tab-btn.soon-tab.active {
+        color: #fff;
+        background: #9e9e9e;
+        border-color: #757575;
+        box-shadow: 0 3px 0 #616161;
+    }
     .tab-btn.kari-tab {
         color: #00796b;
         background: #e0f2f1;
@@ -120,6 +133,8 @@
     .level-wrap {
         display: none;
         justify-content: center;
+        flex-wrap: wrap;
+        max-width: 96%;
         gap: 8px;
         width: fit-content;
         margin: -15px auto 5px;
@@ -409,10 +424,14 @@
     }
 
     /* ===== 横式タブ用 ===== */
-    /* 追加3列（c10,c11,c12）は通常は隠す。横式のときだけ表示し、グリッドを13列に */
-    [id$="-c10"], [id$="-c11"], [id$="-c12"] { display: none; }
+    /* 追加の列（c10〜c15）は通常は隠す。横式は13列、けん算は16列にして表示する */
+    [id$="-c10"], [id$="-c11"], [id$="-c12"], [id$="-c13"], [id$="-c14"], [id$="-c15"] { display: none; }
     .grid.yoko { --cell-size: 46px; grid-template-columns: repeat(13, var(--cell-size)); }
     .grid.yoko [id$="-c10"], .grid.yoko [id$="-c11"], .grid.yoko [id$="-c12"] { display: flex; }
+    .grid.ken { --cell-size: 40px; grid-template-columns: repeat(16, var(--cell-size)); }
+    .grid.ken .cell { font-size: 1.9rem; }
+    .grid.ken [id$="-c10"], .grid.ken [id$="-c11"], .grid.ken [id$="-c12"],
+    .grid.ken [id$="-c13"], .grid.ken [id$="-c14"], .grid.ken [id$="-c15"] { display: flex; }
 
     /* 横式：式の横の「…」は少し下げて、数字の下のほうにそろえる */
     .cell.yoko-dots { padding-top: 0.25em; }
@@ -568,6 +587,23 @@
 
     .red-text { color: red; }
     
+    /* けん算タブ：▢（数のかたまりぶんの幅の箱） */
+    .wide-box {
+        position: absolute;
+        left: 4px;
+        top: 5px;
+        bottom: 5px;
+        border: 3px dashed #c5cae9;
+        border-radius: 8px;
+        box-sizing: border-box;
+        pointer-events: none;
+    }
+    .wide-box.active {
+        border-color: #ff9800;
+        background: rgba(255, 152, 0, 0.1);
+    }
+    .controls.ken-mode .action-btn { display: none; }
+    .controls.ken-mode .hint-row { display: none; }
     .box-input {
         border: 3px dashed #ff9800;
         width: 80%;
@@ -649,17 +685,24 @@
 
     <div class="settings" id="mode-tabs">
         <button class="tab-btn" data-mode="yokoshiki">横式</button>
-        <button class="tab-btn active" data-mode="2digit_div">筆算１</button>
-        <button class="tab-btn" data-mode="2digit_div2">筆算２</button>
-        <button class="tab-btn" data-mode="2digit_div3">筆算３</button>
-        <button class="tab-btn" data-mode="3digit_div1">筆算４</button>
-        <button class="tab-btn" data-mode="3digit_div2">筆算５</button>
-        <button class="tab-btn" data-mode="3digit_div3">筆算６</button>
+        <button class="tab-btn active" data-group="hissan">筆算</button>
         <button class="tab-btn kari-tab" data-mode="karishou">仮の商</button>
+        <button class="tab-btn soon-tab" data-mode="kenzan">けん算</button>
+        <button class="tab-btn soon-tab" data-mode="kufu">くふう</button>
+        <button class="tab-btn soon-tab" data-mode="kentou">商の見当</button>
     </div>
-    
-    <div class="tutorial-wrap">
-        <label><input type="checkbox" id="tutorial-mode"> チュートリアル（自動ヒント）</label>
+
+    <div id="hissan-sub" class="level-wrap">
+        <button class="level-btn active" data-mode="2digit_div">86÷43</button>
+        <button class="level-btn" data-mode="2digit_div2">84÷23</button>
+        <button class="level-btn" data-mode="2digit_div3">54÷15</button>
+        <button class="level-btn" data-mode="3digit_div1">345÷46</button>
+        <button class="level-btn" data-mode="3digit_div2">618÷28</button>
+        <button class="level-btn" data-mode="3digit_div3">506÷123</button>
+    </div>
+    <div id="ken-level" class="level-wrap">
+        <button class="level-btn active" data-ken="easy">かんたん</button>
+        <button class="level-btn" data-ken="hard">むずかしい</button>
     </div>
     <div id="kari-level" class="level-wrap">
         <button class="level-btn" data-level="easy">かんたん</button>
@@ -816,6 +859,20 @@ let kariBusy = false;  // 仮の商タブ：かけ算を見せている間は次
 let kariTries = 0;     // 仮の商タブ：立てなおした回数
 let kariLay = { divCols: [0, 1], dvCols: [2, 3], onesCol: 3, qCell: 'r0-c3' }; // 仮の商タブの配置
 let kariLevel = 'random';  // 仮の商タブの難易度 'easy' / 'hard' / 'random'
+let forceProblem = null;   // [わられる数, わる数] 次の1問を固定する（タブの見本問題）
+let kenLay = null;         // けん算タブの配置
+let kenLevel = 'easy';     // けん算タブ 'easy'（数が縦にそろう）/ 'hard'（左そろえ）
+
+// 固定したい問題がプールの中にあれば取り出す（pool は配列でも {key:配列} でもよい）
+function findForced(pool) {
+    if (!forceProblem || !pool) return null;
+    const lists = Array.isArray(pool) ? [pool] : Object.keys(pool).map(k => pool[k]);
+    for (const list of lists) {
+        const hit = list.find(p => p[0] === forceProblem[0] && p[1] === forceProblem[1]);
+        if (hit) { forceProblem = null; return hit; }
+    }
+    return null;
+}
 let state = 0;
 let selectedCells = [];
 let states = [];
@@ -827,6 +884,25 @@ let startTime = 0;
 let errorStats = { tateru: 0, kakeru: 0, hiku: 0, orosu: 0, other: 0 };
 
 function generateStates() {
+    if (mode === 'kenzan') {
+        // ▢を左から順に、1けたずつ入れていく
+        const L = kenLay;
+        states = [];
+        const addBlank = (cols, numStr, text) => {
+            const from = states.length;
+            numStr.split('').forEach((ch, i) => {
+                states.push({ id: states.length, text: text, type: 'input',
+                              expect: () => Number(ch), targetCell: `r3-c${cols[i]}` });
+            });
+            L.blanks.push({ cols: cols, from: from, to: states.length });
+        };
+        L.blanks = [];
+        addBlank(L.l2.q,  L.qS,  'けん算をしよう。はじめの▢に、商を入れよう。');
+        addBlank(L.l2.r,  L.rS,  'つぎの▢に、あまりを入れよう。');
+        addBlank(L.l2.dv, L.dvS, 'さいごの▢に、わられる数を入れよう。');
+        states.push({ id: states.length, text: 'けん算ができました！', type: 'finish' });
+        return;
+    }
     if (mode === 'karishou') {
         // 仮の商：何度でも試せる。ぴったり合ったときだけ終了
         states = [
@@ -1066,6 +1142,49 @@ function generateStates() {
 }
 
 function generateProblem() {
+    // --- けん算（わる数×商＋あまり＝わられる数 をうめる）---
+    if (mode === 'kenzan') {
+        const pool = [];
+        // 指定された問題があるときは、その形のプールを作る
+        let kind;
+        if (forceProblem) {
+            const fq = Math.floor(forceProblem[0] / forceProblem[1]);
+            kind = (forceProblem[0] < 100) ? 0 : (fq < 10 ? 1 : 2);
+        } else {
+            kind = Math.floor(Math.random() * 3);
+        }
+        // ① 2けた÷2けた（商1けた） ② 3けた÷2けた（商1けた） ③ 3けた÷2けた（商2けた）
+        const dMin = 11, dMax = (kind === 1) ? 99 : 49;
+        const vMin = (kind === 0) ? 20 : 100, vMax = (kind === 0) ? 99 : 999;
+        for (let d = dMin; d <= dMax; d++) {
+            for (let dv = vMin; dv <= vMax; dv++) {
+                const qq = Math.floor(dv / d);
+                if (kind === 2 ? (qq < 10 || qq > 99) : (qq < 2 || qq > 9)) continue;
+                if (dv % d === 0) continue;      // あまりが出る問題だけ
+                pool.push([dv, d, qq]);
+            }
+        }
+        const picked = findForced(pool) || pool[Math.floor(Math.random() * pool.length)];
+        dividend = picked[0];
+        divisor  = picked[1];
+        q        = picked[2];
+        // 式の配置（1マス1文字。左を1マスあけて c1 から）
+        const rem = dividend - q * divisor;
+        const dvS = String(dividend), dS = String(divisor), qS = String(q), rS = String(rem);
+        const align = (kenLevel === 'easy');   // かんたん：わる数・商・あまりが縦にそろう
+        let c = align ? 0 : 1;
+        const take = n => { const a = []; for (let i = 0; i < n; i++) a.push(c++); return a; };
+        const l1 = {};
+        l1.dv = take(dvS.length); l1.op = c++; l1.d = take(dS.length); l1.eq = c++;
+        l1.q = take(qS.length); l1.dots = c++; l1.r = take(rS.length);
+        c = align ? l1.d[0] : 1;      // 2行目のわる数を、1行目のわる数の真下から
+        const l2 = {};
+        l2.d = take(dS.length); l2.mul = c++; l2.q = take(qS.length); l2.plus = c++;
+        l2.r = take(rS.length); l2.eq = c++; l2.dv = take(dvS.length);
+        kenLay = { l1, l2, rem, dvS, dS, qS, rS, blanks: [] };
+        return;
+    }
+
     // --- 仮の商（見当を立てる練習）---
     //   ① 2けた÷2けた（商1けた） ② 3けた÷2けた（商1けた） ③ 3けた÷2けた（十の位に商をたてる）
     if (mode === 'karishou') {
@@ -1191,13 +1310,18 @@ function generateProblem() {
                 }
             }
         }
-        // 3回に1回くらい「立てなおしなし」を出す
-        noRedo1 = (Math.random() < 0.3) && Object.keys(poolExact).length > 0;
-        const src = noRedo1 ? poolExact : pool;
-        const keys = Object.keys(src);
-        const k = keys[Math.floor(Math.random() * keys.length)];
-        const arr = src[k];
-        const picked = arr[Math.floor(Math.random() * arr.length)];
+        // 見本問題の指定があればそれを。なければ3回に1回くらい「立てなおしなし」
+        let picked = findForced(poolExact);
+        if (picked) noRedo1 = true;
+        if (!picked && (picked = findForced(pool))) noRedo1 = false;
+        if (!picked) {
+            noRedo1 = (Math.random() < 0.3) && Object.keys(poolExact).length > 0;
+            const src = noRedo1 ? poolExact : pool;
+            const keys = Object.keys(src);
+            const k = keys[Math.floor(Math.random() * keys.length)];
+            const arr = src[k];
+            picked = arr[Math.floor(Math.random() * arr.length)];
+        }
         dividend = picked[0];
         divisor  = picked[1];
         q        = picked[2];        // 正しい商
@@ -1235,19 +1359,26 @@ function generateProblem() {
             }
         }
         // 両方立てなおし ≒4割、十の位だけ／一の位だけ／立てなおしなし が各2割
-        const rnd = Math.random();
-        const order = rnd < 0.40 ? ['11', '10', '01', '00']
-                    : rnd < 0.60 ? ['10', '11', '01', '00']
-                    : rnd < 0.80 ? ['01', '11', '10', '00']
-                    :              ['00', '11', '10', '01'];
-        const kind = order.find(k => Object.keys(pools[k]).length > 0) || '11';
-        noRedo1 = (kind[0] === '0');
-        noRedo2 = (kind[1] === '0');
-        const bucket = pools[kind];
-        const keys = Object.keys(bucket);
-        const a = keys[Math.floor(Math.random() * keys.length)];
-        const arr = bucket[a];
-        const picked = arr[Math.floor(Math.random() * arr.length)];
+        let picked = null;
+        for (const kk of ['11', '10', '01', '00']) {
+            const hit = findForced(pools[kk]);
+            if (hit) { picked = hit; noRedo1 = (kk[0] === '0'); noRedo2 = (kk[1] === '0'); break; }
+        }
+        if (!picked) {
+            const rnd = Math.random();
+            const order = rnd < 0.40 ? ['11', '10', '01', '00']
+                        : rnd < 0.60 ? ['10', '11', '01', '00']
+                        : rnd < 0.80 ? ['01', '11', '10', '00']
+                        :              ['00', '11', '10', '01'];
+            const kind = order.find(k => Object.keys(pools[k]).length > 0) || '11';
+            noRedo1 = (kind[0] === '0');
+            noRedo2 = (kind[1] === '0');
+            const bucket = pools[kind];
+            const keys = Object.keys(bucket);
+            const a = keys[Math.floor(Math.random() * keys.length)];
+            const arr = bucket[a];
+            picked = arr[Math.floor(Math.random() * arr.length)];
+        }
         dividend = picked[0];
         divisor  = picked[1];
         q        = picked[2];
@@ -1284,16 +1415,22 @@ function generateProblem() {
             }
         }
         // 出題の種類：立てなおしなし ≒1/4、見当が10になる ≒1/4、のこりは見当が1大きい
-        const rnd = Math.random();
-        let src;
         noRedo1 = false; estOver = false;
-        if (rnd < 0.25 && Object.keys(poolExact).length) { src = poolExact; noRedo1 = true; }
-        else if (rnd < 0.50 && Object.keys(poolOver).length) { src = poolOver; estOver = true; }
-        else { src = pool; }
-        const srcKeys = Object.keys(src);
-        const chosenKey = srcKeys[Math.floor(Math.random() * srcKeys.length)];
-        const arr = src[chosenKey];
-        const picked = arr[Math.floor(Math.random() * arr.length)];
+        let picked = findForced(poolExact);
+        if (picked) noRedo1 = true;
+        if (!picked && (picked = findForced(poolOver))) estOver = true;
+        if (!picked) picked = findForced(pool);
+        if (!picked) {
+            const rnd = Math.random();
+            let src;
+            if (rnd < 0.25 && Object.keys(poolExact).length) { src = poolExact; noRedo1 = true; }
+            else if (rnd < 0.50 && Object.keys(poolOver).length) { src = poolOver; estOver = true; }
+            else { src = pool; }
+            const srcKeys = Object.keys(src);
+            const chosenKey = srcKeys[Math.floor(Math.random() * srcKeys.length)];
+            const arr = src[chosenKey];
+            picked = arr[Math.floor(Math.random() * arr.length)];
+        }
         dividend = picked[0];
         divisor  = picked[1];
         q        = picked[2];        // 正しい商
@@ -1322,7 +1459,7 @@ function generateProblem() {
         const qKeys = Object.keys(pool);
         const chosenQ = qKeys[Math.floor(Math.random() * qKeys.length)];
         const arr = pool[chosenQ];
-        const picked = arr[Math.floor(Math.random() * arr.length)];
+        const picked = findForced(pool) || arr[Math.floor(Math.random() * arr.length)];
         dividend = picked[0];
         divisor  = picked[1];
         q        = picked[2];        // 正しい商
@@ -1352,7 +1489,7 @@ function generateProblem() {
         const qKeys = Object.keys(pool).filter(k => Number(k) >= 2 && Number(k) <= 4);
         const chosenQ = qKeys[Math.floor(Math.random() * qKeys.length)];
         const arr = pool[chosenQ];
-        const picked = arr[Math.floor(Math.random() * arr.length)];
+        const picked = findForced(pool) || arr[Math.floor(Math.random() * arr.length)];
         dividend = picked[0];
         divisor  = picked[1];
         q        = picked[2];        // 正しい商
@@ -1381,7 +1518,7 @@ function generateProblem() {
         const qKeys = Object.keys(pool);
         const chosenQ = qKeys[Math.floor(Math.random() * qKeys.length)];
         const arr = pool[chosenQ];
-        const picked = arr[Math.floor(Math.random() * arr.length)];
+        const picked = findForced(pool) || arr[Math.floor(Math.random() * arr.length)];
         dividend = picked[0];
         divisor  = picked[1];
         q        = picked[2];
@@ -1477,6 +1614,9 @@ function playSound(type) {
 
 // 答えの表示文言（２けたでわる①はあまりがあれば併記）
 function answerText() {
+    if (mode === 'kenzan') {
+        return `${divisor} × ${q} ＋ ${kenLay.rem} ＝ ${dividend}`;
+    }
     if (mode === 'karishou') {
         const rem = kariLay.target - q * divisor;
         if (kariLay.tens) return `十の位は（ ${q} ）　のこり（ ${rem} ）`;
@@ -1897,6 +2037,23 @@ function updateUI() {
             if (!document.getElementById('hanamaru').classList.contains('show')) {
                 showClearEffect();
             }
+        }
+        return;
+    }
+
+    // ===== けん算：▢を出しなおして、入力中のところを光らせる =====
+    if (mode === 'kenzan') {
+        document.querySelectorAll('.wide-box').forEach(e => e.remove());
+        kenLay.blanks.forEach(bl => {
+            if (state >= bl.to) return;                       // 入力ずみ
+            const first = document.getElementById(`cell-r3-c${bl.cols[0]}`);
+            const box = document.createElement('span');
+            box.className = 'wide-box' + ((state >= bl.from) ? ' active' : '');
+            box.style.width = `calc(${bl.cols.length * 100}% - 8px)`;
+            first.appendChild(box);
+        });
+        if (s.type === 'finish' && !document.getElementById('hanamaru').classList.contains('show')) {
+            showClearEffect();
         }
         return;
     }
@@ -2392,9 +2549,6 @@ function updateUI() {
         }
     }
 
-    if (document.getElementById('tutorial-mode').checked && s.type !== 'finish') {
-        setTimeout(() => document.getElementById('btn-hint').click(), 100);
-    }
 }
 
 // --- ドラッグ＆ドロップ実装 ---
@@ -2722,11 +2876,22 @@ document.getElementById('btn-tashikame').addEventListener('click', () => {
     }
 });
 
+// --- けん算タブの「かんたん／むずかしい」 ---
+document.querySelectorAll('#ken-level .level-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        kenLevel = btn.dataset.ken;
+        document.querySelectorAll('#ken-level .level-btn').forEach(b => b.classList.toggle('active', b === btn));
+        playSound('click');
+        forceProblem = [dividend, divisor];   // 同じ問題のまま並べ方だけ変える
+        initGame();
+    });
+});
+
 // --- 仮の商タブの難易度ボタン ---
-document.querySelectorAll('.level-btn').forEach(btn => {
+document.querySelectorAll('#kari-level .level-btn').forEach(btn => {
     btn.addEventListener('click', () => {
         kariLevel = btn.dataset.level;
-        document.querySelectorAll('.level-btn').forEach(b => b.classList.toggle('active', b === btn));
+        document.querySelectorAll('#kari-level .level-btn').forEach(b => b.classList.toggle('active', b === btn));
         playSound('click');
         initGame();   // その難しさの問題を出しなおす
     });
@@ -2745,11 +2910,44 @@ document.querySelectorAll('.level-btn').forEach(btn => {
 document.getElementById('btn-reset').addEventListener('click', initGame);
 
 let currentMode = '2digit_div';
+// 各筆算タブの見本問題（そのボタンを選んだときの最初の1問）
+const TAB_PROBLEM = {
+    '2digit_div':  [86, 43],
+    '2digit_div2': [84, 23],
+    '2digit_div3': [54, 15],
+    '3digit_div1': [345, 46],
+    '3digit_div2': [618, 28],
+    '3digit_div3': [506, 123],
+    'kenzan':      [78, 23]      // けん算タブを開いたときの1問目
+};
+const HISSAN_MODES = ['2digit_div', '2digit_div2', '2digit_div3', '3digit_div1', '3digit_div2', '3digit_div3'];
+const SOON_MODES = ['kufu', 'kentou'];   // これから作るタブ
+
 document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
         document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
+        if (btn.dataset.group === 'hissan') {
+            // 「筆算」タブ：いま選ばれている筆算の見本問題から始める
+            const sub = document.querySelector('#hissan-sub .level-btn.active')
+                     || document.querySelector('#hissan-sub .level-btn');
+            currentMode = sub.dataset.mode;
+            forceProblem = TAB_PROBLEM[currentMode];
+        } else {
+            currentMode = btn.dataset.mode;
+            forceProblem = TAB_PROBLEM[currentMode] || null;
+        }
+        initGame();
+    });
+});
+
+// 筆算の中の選択ボタン（86÷43 など）
+document.querySelectorAll('#hissan-sub .level-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('#hissan-sub .level-btn').forEach(b => b.classList.toggle('active', b === btn));
         currentMode = btn.dataset.mode;
+        forceProblem = TAB_PROBLEM[currentMode];   // 最初の1問はボタンに書いてある問題
+        playSound('click');
         initGame();
     });
 });
@@ -2757,7 +2955,20 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 // --- 初期化 ---
 function initGame() {
     mode = currentMode;
+    // タブの下の行：筆算のときは問題ボタン、仮の商のときは難易度ボタン
+    const isHissan = HISSAN_MODES.includes(mode);
+    document.getElementById('hissan-sub').style.display = isHissan ? 'flex' : 'none';
+    document.getElementById('kari-level').style.display = (mode === 'karishou') ? 'flex' : 'none';
+    document.getElementById('ken-level').style.display = (mode === 'kenzan') ? 'flex' : 'none';
+    // これから作るタブ
+    const isSoon = SOON_MODES.includes(mode);
+    document.querySelector('.main-content').style.display = isSoon ? 'none' : 'flex';
+    if (isSoon) {
+        document.getElementById('instruction').innerText = 'このタブはこれから作ります。';
+        return;
+    }
     generateProblem();
+    forceProblem = null;   // 見本問題は1回だけ
     generateStates();
     state = 0;
     selectedCells = [];
@@ -2777,12 +2988,13 @@ function initGame() {
 
     // 横式モードのときはグリッドを3列広げ、たてる〜おろすを消して「たしかめ」を出す
     const yoko = (mode === 'yokoshiki');
-    document.querySelector('.grid').classList.toggle('yoko', yoko);
+    const isKen = (mode === 'kenzan');
+    document.querySelector('.grid').classList.toggle('yoko', yoko);   // 横式は13列
+    document.querySelector('.grid').classList.toggle('ken', isKen);   // けん算は16列
     document.querySelector('.controls').classList.toggle('yoko-mode', yoko);
+    document.querySelector('.controls').classList.toggle('ken-mode', isKen);
     // 仮の商モード：たてる〜おろすの代わりにヒントボタンを出す。上はチュートリアルでなく難易度ボタン
     document.querySelector('.controls').classList.toggle('kari-mode', mode === 'karishou');
-    document.querySelector('.tutorial-wrap').style.display = (mode === 'karishou') ? 'none' : 'flex';
-    document.getElementById('kari-level').style.display = (mode === 'karishou') ? 'flex' : 'none';
     kariBusy = false; kariHint = null;
     document.querySelectorAll('.kari-btn').forEach(b => b.classList.remove('on'));
     
@@ -2819,8 +3031,8 @@ function initGame() {
         // 筆算６：3けた÷3けた。かっこの上線 r0-c3,c4,c5／ひき算の線 r2-c3,c4,c5
         [3, 4, 5].forEach(c => document.getElementById(`cell-r0-c${c}`).classList.add('border-bottom'));
         [3, 4, 5].forEach(c => document.getElementById(`cell-r2-c${c}`).classList.add('border-bottom', 'border-hidden'));
-    } else if (mode === 'yokoshiki') {
-        // 横式：あらかじめ引く線はなし（ひき算の線は計算のときに出す）
+    } else if (mode === 'yokoshiki' || mode === 'kenzan') {
+        // 横式・けん算：あらかじめ引く線はなし
     } else {
     [3, 4].forEach(c => document.getElementById(`cell-r0-c${c}`).classList.add('border-bottom'));
     // 積の下線（ひき算の線）：c1, c2 の下
@@ -2836,12 +3048,29 @@ function initGame() {
     const isTwoDigitDiv = (mode === '2digit_div' || mode === '2digit_div2' || mode === '2digit_div3' || kari2);
     const is3d2dDiv = (mode === '3digit_div1' || mode === '3digit_div2' || (mode === 'karishou' && !kari2));
     const is3d3dDiv = (mode === '3digit_div3');
-    if (!isYoko) {
+    if (!isYoko && mode !== 'kenzan') {
         document.getElementById((isTwoDigitDiv || is3d2dDiv) ? 'cell-r1-c2' : (is3d3dDiv ? 'cell-r1-c3' : 'cell-r1-c3')).classList.add('paren-left');
     }
 
     // 問題のセット
-    if (isYoko) {
+    if (mode === 'kenzan') {
+        // r1：78 ÷ 23 ＝ 3 … 9 ／ r3：23 × ▢ ＋ ▢ ＝ ▢
+        const L = kenLay;
+        const put = (row, col, ch) => { document.getElementById(`cell-r${row}-c${col}`).innerText = ch; };
+        L.dvS.split('').forEach((ch, i) => put(1, L.l1.dv[i], ch));
+        put(1, L.l1.op, '÷');
+        L.dS.split('').forEach((ch, i) => put(1, L.l1.d[i], ch));
+        put(1, L.l1.eq, '=');
+        L.qS.split('').forEach((ch, i) => put(1, L.l1.q[i], ch));
+        put(1, L.l1.dots, '…');
+        document.getElementById(`cell-r1-c${L.l1.dots}`).classList.add('yoko-dots');
+        L.rS.split('').forEach((ch, i) => put(1, L.l1.r[i], ch));
+        // けん算の式（数を入れるところは空けておく）
+        L.dS.split('').forEach((ch, i) => put(3, L.l2.d[i], ch));
+        put(3, L.l2.mul, '×');
+        put(3, L.l2.plus, '+');
+        put(3, L.l2.eq, '=');
+    } else if (isYoko) {
         // 横式：1行あけて r1、左端1マスあけて c1 から「d… ÷ v… =」を並べる（商は入力）
         const L = yokoLay;
         L.ddStr.split('').forEach((ch, i) => { document.getElementById(`cell-r1-c${L.dividendCols[i]}`).innerText = ch; });
@@ -2891,13 +3120,14 @@ function initGame() {
     updateUI();
 }
 
-// 起動
-// 横式用に、各行へ c10・c11・c12 の3マスを追加（グリッドは横式のときだけ13列表示）
+// 起動：最初の1問も見本問題から
+forceProblem = TAB_PROBLEM[currentMode] || null;
+// 各行に c10〜c15 のマスを追加（横式は13列、けん算は16列のときだけ表示）
 function addYokoColumns() {
     for (let r = 0; r < 8; r++) {
         let anchor = document.getElementById(`cell-r${r}-c9`);
         if (!anchor) continue;
-        for (let c = 10; c <= 12; c++) {
+        for (let c = 10; c <= 15; c++) {
             if (document.getElementById(`cell-r${r}-c${c}`)) continue;
             const el = document.createElement('div');
             el.className = 'cell';
