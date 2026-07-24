@@ -211,6 +211,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
+        flex-wrap: wrap;
         transition: opacity 0.3s;
     }
 
@@ -433,6 +434,79 @@
     .grid.ken [id$="-c10"], .grid.ken [id$="-c11"], .grid.ken [id$="-c12"],
     .grid.ken [id$="-c13"], .grid.ken [id$="-c14"], .grid.ken [id$="-c15"] { display: flex; }
 
+    /* くふう：13列。「10でわる」「4倍」の小さい文字をマスに重ねる */
+    .grid.kufu { --cell-size: 46px; grid-template-columns: repeat(13, var(--cell-size)); }
+    .grid.kufu [id$="-c10"], .grid.kufu [id$="-c11"], .grid.kufu [id$="-c12"] { display: flex; }
+    .kufu-label {
+        position: absolute;
+        left: 4px;
+        top: 50%;
+        transform: translateY(-50%);
+        font-size: 1.05rem;
+        font-weight: bold;
+        color: #333;
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        white-space: nowrap;
+        pointer-events: none;
+    }
+    /* 540 → 54 に引く、2行ぶんの長さのやじるし */
+    .kufu-arrow {
+        position: absolute;
+        left: 50%;
+        top: 2px;
+        width: 4px;
+        height: calc(200% - 18px);
+        transform: translateX(-50%);
+        background: #d81b60;
+        border-radius: 2px;
+        pointer-events: none;
+    }
+    .kufu-arrow::after {
+        content: '';
+        position: absolute;
+        left: 50%;
+        bottom: -11px;
+        transform: translateX(-50%);
+        border-left: 8px solid transparent;
+        border-right: 8px solid transparent;
+        border-top: 12px solid #d81b60;
+    }
+    .cell.kufu-op { color: #d81b60; }
+
+    /* --- 商の見当モード：「大きすぎた／小さすぎた」をえらぶ --- */
+    .kentou-choices { display: none; flex-direction: column; gap: 10px; }
+    .kentou-btn {
+        background: linear-gradient(145deg, #64b5f6, #1e88e5);
+        color: #fff;
+        border: 2px solid #1976d2;
+        box-shadow: 0 4px 0 #1565c0;
+        font-size: 1.1rem;
+        padding: 14px 6px;
+    }
+    .kentou-btn:active { box-shadow: 0 0 0 #1565c0; transform: translateY(4px); }
+    .controls.kentou-mode { min-width: 168px; }
+    .controls.kentou-mode .action-btn { display: none; }
+    .controls.kentou-mode .hint-row { display: none; }
+    .controls.kentou-mode .kentou-choices { display: flex; }
+    /* あてはめる文（□は入力するところ） */
+    /* 商の見当：まだひかないので、積の下にひき算の線は出さない */
+    .grid.kentou [id^="cell-r2-"].border-bottom { border-bottom-color: transparent; }
+    .kentou-sent { width: 100%; text-align: center; line-height: 1.9; }
+    .kentou-blank {
+        display: inline-block;
+        width: 6.6em;
+        height: 1.2em;
+        vertical-align: -0.25em;
+        border: 3px dashed #c5cae9;
+        border-radius: 8px;
+    }
+    .kentou-blank.num { width: 1.8em; }
+    .kentou-blank.active { border-color: #ff9800; background: rgba(255, 152, 0, 0.12); }
+    /* 赤字はまわりの文字と同じ行にそろえる（位置をずらす指定はしない） */
+    .kentou-ans { color: #e53935; font-weight: bold; }
+
     /* 横式：式の横の「…」は少し下げて、数字の下のほうにそろえる */
     .cell.yoko-dots { padding-top: 0.25em; }
 
@@ -604,6 +678,8 @@
     }
     .controls.ken-mode .action-btn { display: none; }
     .controls.ken-mode .hint-row { display: none; }
+    .controls.kufu-mode .action-btn { display: none; }
+    .controls.kufu-mode .hint-row { display: none; }
     .box-input {
         border: 3px dashed #ff9800;
         width: 80%;
@@ -703,6 +779,11 @@
     <div id="ken-level" class="level-wrap">
         <button class="level-btn active" data-ken="easy">かんたん</button>
         <button class="level-btn" data-ken="hard">むずかしい</button>
+    </div>
+    <div id="kufu-level" class="level-wrap">
+        <button class="level-btn" data-kufu="div">同じ数でわる</button>
+        <button class="level-btn" data-kufu="mul">同じ数をかける</button>
+        <button class="level-btn active" data-kufu="random">ランダム</button>
     </div>
     <div id="kari-level" class="level-wrap">
         <button class="level-btn" data-level="easy">かんたん</button>
@@ -816,6 +897,10 @@
                 <button id="btn-divup" class="kari-btn">わる数を大きく</button>
                 <button id="btn-bothup" class="kari-btn">わられる数も大きく</button>
             </div>
+            <div class="kentou-choices">
+                <button id="btn-toobig" class="kentou-btn">大きすぎた</button>
+                <button id="btn-toosmall" class="kentou-btn">小さすぎた</button>
+            </div>
             <div class="hint-row">
                 <button id="btn-hint" class="hint-btn">ヒント</button>
                 <button id="btn-tashikame" class="tashikame-btn">たしかめ</button>
@@ -862,6 +947,10 @@ let kariLevel = 'random';  // 仮の商タブの難易度 'easy' / 'hard' / 'ran
 let forceProblem = null;   // [わられる数, わる数] 次の1問を固定する（タブの見本問題）
 let kenLay = null;         // けん算タブの配置
 let kenLevel = 'easy';     // けん算タブ 'easy'（数が縦にそろう）/ 'hard'（左そろえ）
+let kufuLay = null;        // くふうタブ（商の性質）の配置
+let kufuLevel = 'random';  // くふうタブ 'div'（同じ数でわる）/ 'mul'（同じ数をかける）/ 'random'
+let kentouLay = null;      // 商の見当タブ（かりの商のなおし方）の配置
+let kentouBusy = false;    // 商の見当タブ：かけ算を見せている間は二重に動かさない
 
 // 固定したい問題がプールの中にあれば取り出す（pool は配列でも {key:配列} でもよい）
 function findForced(pool) {
@@ -901,6 +990,40 @@ function generateStates() {
         addBlank(L.l2.r,  L.rS,  'つぎの▢に、あまりを入れよう。');
         addBlank(L.l2.dv, L.dvS, 'さいごの▢に、わられる数を入れよう。');
         states.push({ id: states.length, text: 'けん算ができました！', type: 'finish' });
+        return;
+    }
+    if (mode === 'kentou') {
+        // ①「大きすぎた」をえらぶ → ②1小さい数をテンキーで入れる
+        const L = kentouLay;
+        states = [
+            { id: 0, text: 'かりの商をなおそう。', type: 'choice', expect: 'big' },
+            { id: 1, text: 'かりの商をなおそう。', type: 'input', expect: () => L.right, targetCell: L.qCell },
+            { id: 2, text: 'できました！', type: 'finish' }
+        ];
+        return;
+    }
+    if (mode === 'kufu') {
+        // ▢は3つ：①同じ数（右） ②下の式のわる数 ③下の式の答え
+        const L = kufuLay;
+        states = [];
+        L.blanks = [];
+        const addBlank = (row, cols, numStr, text) => {
+            const from = states.length;
+            numStr.split('').forEach((ch, i) => {
+                states.push({ id: states.length, text: text, type: 'input',
+                              expect: () => Number(ch), targetCell: `r${row}-c${cols[i]}` });
+            });
+            L.blanks.push({ row: row, cols: cols, from: from, to: states.length });
+        };
+        const isDiv = (L.kind === 'div');
+        addBlank(3, L.inputCols, String(L.num), isDiv
+            ? `わられる数を ${L.num} でわったよ。わる数も同じ数でわろう。`
+            : `わられる数を ${L.num} 倍したよ。わる数も同じだけ大きくしよう。`);
+        addBlank(4, L.botDCols, String(L.nd), isDiv
+            ? `${divisor} を ${L.num} でわると？ 下の式のわる数を入れよう。`
+            : `${divisor} を ${L.num} 倍すると？ 下の式のわる数を入れよう。`);
+        addBlank(4, L.qCols, String(q), 'かんたんな式になったね。答えを出そう。');
+        states.push({ id: states.length, text: 'できました！', type: 'finish' });
         return;
     }
     if (mode === 'karishou') {
@@ -1182,6 +1305,156 @@ function generateProblem() {
         l2.d = take(dS.length); l2.mul = c++; l2.q = take(qS.length); l2.plus = c++;
         l2.r = take(rS.length); l2.eq = c++; l2.dv = take(dvS.length);
         kenLay = { l1, l2, rem, dvS, dS, qS, rS, blanks: [] };
+        return;
+    }
+
+    // --- 商の見当（かりの商が大きすぎたとき、1小さくしてなおす）---
+    //   見当＝正しい商＋1 の問題だけを出す。1回なおせば必ず正しくなる
+    //   （54÷15 のように 5→4 にしてもまだ大きい問題は入れない）
+    if (mode === 'kentou') {
+        const pools = { two: [], one: [], tens: [] };
+        // ① 2けた÷2けた（商1けた）
+        for (let d = 11; d <= 49; d++) {
+            const dt = Math.floor(d / 10);
+            for (let dv = 20; dv <= 99; dv++) {
+                const qq = Math.floor(dv / d);
+                if (qq < 2 || qq > 8) continue;
+                if (Math.floor(Math.floor(dv / 10) / dt) !== qq + 1) continue;   // 指でかくした見当
+                if ((qq + 1) * d > 99) continue;                                  // 積は2けたに収める
+                pools.two.push([dv, d, qq, dv, 3]);
+            }
+        }
+        // ② 3けた÷2けた（一の位に商をたてる）
+        for (let d = 20; d <= 49; d++) {
+            const dt = Math.floor(d / 10);
+            for (let dv = 100; dv <= 999; dv++) {
+                const qq = Math.floor(dv / d);
+                if (qq < 2 || qq > 8) continue;
+                if (Math.floor(Math.floor(dv / 10) / dt) !== qq + 1) continue;
+                pools.one.push([dv, d, qq, dv, 4]);
+            }
+        }
+        // ③ 3けた÷2けた（十の位に商をたてる。上2けたで判定）
+        for (let d = 12; d <= 49; d++) {
+            const dt = Math.floor(d / 10);
+            if (dt < 2) continue;
+            for (let dv = 100; dv <= 999; dv++) {
+                if (Math.floor(dv / d) < 10) continue;        // 商は2けた
+                const target = Math.floor(dv / 10);           // いまわっている数（上2けた）
+                const q1 = Math.floor(target / d);
+                if (q1 < 2 || q1 > 8) continue;
+                if (Math.floor(Math.floor(dv / 100) / dt) !== q1 + 1) continue;
+                if ((q1 + 1) * d > 99) continue;
+                pools.tens.push([dv, d, q1, target, 3]);
+            }
+        }
+        let picked = null;
+        for (const k of ['two', 'one', 'tens']) {
+            const hit = findForced(pools[k]);
+            if (hit) { picked = hit; break; }
+        }
+        if (!picked) {
+            const keys = Object.keys(pools).filter(k => pools[k].length);
+            const arr = pools[keys[Math.floor(Math.random() * keys.length)]];
+            picked = arr[Math.floor(Math.random() * arr.length)];
+        }
+        dividend = picked[0];
+        divisor  = picked[1];
+        q        = picked[2];                 // なおしたあとの正しい商（そのけたの数）
+        const target = picked[3], onesCol = picked[4];
+        const est = q + 1;                    // かりの商（大きすぎる）
+        const product = est * divisor;        // 大きすぎた積
+        const prodCols = [];
+        for (let i = String(product).length - 1; i >= 0; i--) prodCols.push(onesCol - i);
+        kentouLay = {
+            est: est, right: q, product: product,
+            dvCols: (dividend >= 100) ? [2, 3, 4] : [2, 3],
+            onesCol: onesCol, prodCols: prodCols,
+            qCell: 'r0-c' + onesCol, target: target
+        };
+        return;
+    }
+
+    // --- くふう（わられる数とわる数を同じ数でわる／同じ数をかけても、商は変わらない）---
+    //   計算がかんたんにならない変形は出さない。
+    //   ①「同じ数でわる」…両方の0を同じだけ消して、わる数を1けたにする（540÷60 → 54÷6）
+    //   ②「同じ数をかける」…わる数をちょうど10や100にする（300÷25 → 1200÷100）
+    if (mode === 'kufu') {
+        // 種類ごとに分けて作り、種類を等確率で選ぶ（1つの型にかたよらないように）
+        const pool = {};   // 種類 → [わられる数, わる数, 種類, かける/わる数, 新わられる数, 新わる数, 商]
+        if (kufuLevel !== 'mul') {
+            // 消す0の数は1つ（10でわる）か2つ（100でわる）。下の式は「2けた÷1けた」になる
+            [10, 100].forEach(p => {
+                const key = 'div' + p;
+                for (let b = 2; b <= 9; b++) {
+                    for (let qq = 2; qq <= 9; qq++) {
+                        const a = b * qq;
+                        if (a < 12) continue;                  // 下のわられる数は2けた
+                        (pool[key] = pool[key] || []).push([a * p, b * p, 'div', p, a, b, qq]);
+                    }
+                }
+            });
+            // ③ 2〜9 の同じ数でわる…わる数が1けたになる（36÷12 → 3でわる → 12÷4）
+            //    上も下も2けたなので、どちらのわり算も九九の中でできる
+            for (let k = 2; k <= 9; k++) {
+                for (let b = 2; b <= 9; b++) {
+                    const d = b * k;                       // 元のわる数
+                    if (d < 10 || d > 99) continue;        // 元のわる数は2けた（下は1けたになる）
+                    if (d % 10 === 0) continue;            // 0を消すくふうと重ならないように
+                    for (let qq = 2; qq <= 9; qq++) {
+                        const a = b * qq;                  // 下のわられる数
+                        if (a < 10) continue;              // 下の式も2けた÷1けた
+                        const dv = a * k;                  // 元のわられる数
+                        if (dv > 99) continue;
+                        (pool.divk = pool.divk || []).push([dv, d, 'div', k, a, b, qq]);
+                    }
+                }
+            }
+        }
+        if (kufuLevel !== 'div') {
+            // わる数を10・100にできる数だけ。かけ算そのものもかんたんな数にそろえる
+            [[5, 2, 10], [25, 4, 100], [50, 2, 100]].forEach(([d, m, nd]) => {
+                const key = 'mul' + d;
+                const step = (d === 5) ? 10 : 50;
+                for (let dv = 100; dv <= 999; dv += step) {
+                    if (dv % d !== 0) continue;
+                    const qq = dv / d;
+                    if (qq < 3 || qq > 99) continue;
+                    (pool[key] = pool[key] || []).push([dv, d, 'mul', m, dv * m, nd, qq]);
+                }
+            });
+        }
+        const keys = Object.keys(pool);
+        const arr = pool[keys[Math.floor(Math.random() * keys.length)]];
+        const picked = findForced(pool) || arr[Math.floor(Math.random() * arr.length)];
+        dividend = picked[0];
+        divisor  = picked[1];
+        const kind = picked[2], num = picked[3], ndv = picked[4], nd = picked[5];
+        q = picked[6];
+        // 配置：上下の式の「÷」を同じ列にそろえ、わられる数は左づめ・わる数も左づめ
+        //   540 と 54 は左そろえ。やじるしは 540 の「4」の下から、54 の「4」まで引く
+        const topDvS = String(dividend), topDS = String(divisor);
+        const botDvS = String(ndv), botDS = String(nd), qS = String(q), numS = String(num);
+        const leftAt = (n, startCol) => { const a = []; for (let i = 0; i < n; i++) a.push(startCol + i); return a; };
+        const opCol = 1 + Math.max(topDvS.length, botDvS.length);
+        const topDvCols = leftAt(topDvS.length, 1);
+        const botDvCols = leftAt(botDvS.length, 1);
+        const topDCols  = leftAt(topDS.length, opCol + 1);
+        const botDCols  = leftAt(botDS.length, opCol + 1);
+        const eqCol     = botDCols[botDCols.length - 1] + 1;
+        const arrowL    = topDvCols[Math.floor((topDvCols.length - 1) / 2)];
+        const arrowR    = opCol + 1;                           // わる数どうしをつなぐやじるし
+        const inputCols = leftAt(numS.length, opCol + 2);      // やじるしの右に▢（同じ数）
+        kufuLay = {
+            kind, num, ndv, nd, opCol, eqCol,
+            topDvCols, topDCols, botDvCols, botDCols,
+            qCols: leftAt(qS.length, eqCol + 1),
+            inputCols, arrowL, arrowR,
+            labelL: arrowL + 1,                                // 「10でわる」…やじるしの横に小さく
+            labelR: inputCols[inputCols.length - 1] + 1,
+            word: (kind === 'div') ? 'でわる' : '倍',
+            blanks: []
+        };
         return;
     }
 
@@ -1613,7 +1886,26 @@ function playSound(type) {
 }
 
 // 答えの表示文言（２けたでわる①はあまりがあれば併記）
+// 商の見当：あてはめる文（えらんだことば・入れた数は赤で残す）
+function kentouSentence() {
+    const L = kentouLay;
+    const word = (state >= 1)
+        ? '<span class="kentou-ans">大きすぎた</span>'
+        : `<span class="kentou-blank${state === 0 ? ' active' : ''}"></span>`;
+    const num = (state >= 2)
+        ? `<span class="kentou-ans">${L.right}</span>`
+        : `<span class="kentou-blank num${state === 1 ? ' active' : ''}"></span>`;
+    return `<div class="kentou-sent">かりの商の ${L.est} が ${word} から、`
+         + `<br>商を1小さくして （ ${num} ） をたてます。</div>`;
+}
+
 function answerText() {
+    if (mode === 'kentou') {
+        return kentouSentence();
+    }
+    if (mode === 'kufu') {
+        return `${dividend} ÷ ${divisor} ＝ ${kufuLay.ndv} ÷ ${kufuLay.nd} ＝ ${q}`;
+    }
     if (mode === 'kenzan') {
         return `${divisor} × ${q} ＋ ${kenLay.rem} ＝ ${dividend}`;
     }
@@ -2047,6 +2339,42 @@ function updateUI() {
         kenLay.blanks.forEach(bl => {
             if (state >= bl.to) return;                       // 入力ずみ
             const first = document.getElementById(`cell-r3-c${bl.cols[0]}`);
+            const box = document.createElement('span');
+            box.className = 'wide-box' + ((state >= bl.from) ? ' active' : '');
+            box.style.width = `calc(${bl.cols.length * 100}% - 8px)`;
+            first.appendChild(box);
+        });
+        if (s.type === 'finish' && !document.getElementById('hanamaru').classList.contains('show')) {
+            showClearEffect();
+        }
+        return;
+    }
+
+    // ===== 商の見当：文をうめていく。数を入れたらかけ算をして、積を書きかえる =====
+    if (mode === 'kentou') {
+        const L = kentouLay;
+        if (state === 1) {
+            // ★大きすぎた積はまだ消さない。商のところだけ立てなおしの箱にする
+            document.getElementById('cell-' + L.qCell).innerHTML =
+                '<div class="box-input"><span class="ghost-num">' + L.est + '</span></div>';
+        }
+        document.getElementById('instruction').innerHTML = kentouSentence();
+        if (s.type === 'finish' && !kentouBusy &&
+            !document.getElementById('hanamaru').classList.contains('show')) {
+            // わる数 × なおした商 のかけ算を右に順に出し、その積を筆算におろす
+            // （このとき、はじめに書いてあった大きすぎる積が書きかわる）
+            kentouBusy = true;
+            renderMultBox(L.right, L.right * divisor, showClearEffect, 2, L.onesCol, 0);
+        }
+        return;
+    }
+
+    // ===== くふう：▢を出しなおして、入力中のところを光らせる =====
+    if (mode === 'kufu') {
+        document.querySelectorAll('.wide-box').forEach(e => e.remove());
+        kufuLay.blanks.forEach(bl => {
+            if (state >= bl.to) return;                       // 入力ずみ
+            const first = document.getElementById(`cell-r${bl.row}-c${bl.cols[0]}`);
             const box = document.createElement('span');
             box.className = 'wide-box' + ((state >= bl.from) ? ' active' : '');
             box.style.width = `calc(${bl.cols.length * 100}% - 8px)`;
@@ -2686,6 +3014,11 @@ function showClearEffect() {
     setTimeout(() => comboSpan.style.transform = 'scale(1)', 300);
 
     setTimeout(() => {
+        // 商の見当は文が2行あるので、時間とアドバイスは出さない（マスの位置がずれるため）
+        if (mode === 'kentou') {
+            document.getElementById('instruction').innerHTML = answerText();
+            return;
+        }
         document.getElementById('instruction').innerHTML = `${answerText()}<br><span style="font-size: 1rem; color: #d32f2f;">🕒 ${timeTaken}秒！ ${advice}</span>`;
     }, 500);
 }
@@ -2887,6 +3220,32 @@ document.querySelectorAll('#ken-level .level-btn').forEach(btn => {
     });
 });
 
+// --- 商の見当タブ：「大きすぎた／小さすぎた」をえらぶ ---
+[['btn-toobig', 'big'], ['btn-toosmall', 'small']].forEach(([id, val]) => {
+    document.getElementById(id).addEventListener('click', () => {
+        if (mode !== 'kentou') return;
+        const s = states[state];
+        if (!s || s.type !== 'choice') return;
+        if (val === s.expect) {
+            playSound('click');
+            state++;
+            updateUI();
+        } else {
+            handleWrong(id);
+        }
+    });
+});
+
+// --- くふうタブの「同じ数でわる／同じ数をかける」 ---
+document.querySelectorAll('#kufu-level .level-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        kufuLevel = btn.dataset.kufu;
+        document.querySelectorAll('#kufu-level .level-btn').forEach(b => b.classList.toggle('active', b === btn));
+        playSound('click');
+        initGame();
+    });
+});
+
 // --- 仮の商タブの難易度ボタン ---
 document.querySelectorAll('#kari-level .level-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -2918,10 +3277,12 @@ const TAB_PROBLEM = {
     '3digit_div1': [345, 46],
     '3digit_div2': [618, 28],
     '3digit_div3': [506, 123],
-    'kenzan':      [78, 23]      // けん算タブを開いたときの1問目
+    'kenzan':      [78, 23],     // けん算タブを開いたときの1問目
+    'kufu':        [540, 60],    // くふうタブを開いたときの1問目
+    'kentou':      [834, 21]     // 商の見当タブを開いたときの1問目（教科書と同じ）
 };
 const HISSAN_MODES = ['2digit_div', '2digit_div2', '2digit_div3', '3digit_div1', '3digit_div2', '3digit_div3'];
-const SOON_MODES = ['kufu', 'kentou'];   // これから作るタブ
+const SOON_MODES = [];   // これから作るタブ
 
 document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -2960,6 +3321,7 @@ function initGame() {
     document.getElementById('hissan-sub').style.display = isHissan ? 'flex' : 'none';
     document.getElementById('kari-level').style.display = (mode === 'karishou') ? 'flex' : 'none';
     document.getElementById('ken-level').style.display = (mode === 'kenzan') ? 'flex' : 'none';
+    document.getElementById('kufu-level').style.display = (mode === 'kufu') ? 'flex' : 'none';
     // これから作るタブ
     const isSoon = SOON_MODES.includes(mode);
     document.querySelector('.main-content').style.display = isSoon ? 'none' : 'flex';
@@ -2991,8 +3353,14 @@ function initGame() {
     const isKen = (mode === 'kenzan');
     document.querySelector('.grid').classList.toggle('yoko', yoko);   // 横式は13列
     document.querySelector('.grid').classList.toggle('ken', isKen);   // けん算は16列
+    const isKufu = (mode === 'kufu');
+    document.querySelector('.grid').classList.toggle('kufu', isKufu); // くふうは13列
+    document.querySelector('.grid').classList.toggle('kentou', mode === 'kentou');
+    kentouBusy = false;
     document.querySelector('.controls').classList.toggle('yoko-mode', yoko);
     document.querySelector('.controls').classList.toggle('ken-mode', isKen);
+    document.querySelector('.controls').classList.toggle('kufu-mode', isKufu);
+    document.querySelector('.controls').classList.toggle('kentou-mode', mode === 'kentou');
     // 仮の商モード：たてる〜おろすの代わりにヒントボタンを出す。上はチュートリアルでなく難易度ボタン
     document.querySelector('.controls').classList.toggle('kari-mode', mode === 'karishou');
     kariBusy = false; kariHint = null;
@@ -3031,8 +3399,11 @@ function initGame() {
         // 筆算６：3けた÷3けた。かっこの上線 r0-c3,c4,c5／ひき算の線 r2-c3,c4,c5
         [3, 4, 5].forEach(c => document.getElementById(`cell-r0-c${c}`).classList.add('border-bottom'));
         [3, 4, 5].forEach(c => document.getElementById(`cell-r2-c${c}`).classList.add('border-bottom', 'border-hidden'));
-    } else if (mode === 'yokoshiki' || mode === 'kenzan') {
-        // 横式・けん算：あらかじめ引く線はなし
+    } else if (mode === 'kentou') {
+        // 商の見当：わられる数のけた数に合わせて、かっこの上線だけ引く
+        kentouLay.dvCols.forEach(c => document.getElementById(`cell-r0-c${c}`).classList.add('border-bottom'));
+    } else if (mode === 'yokoshiki' || mode === 'kenzan' || mode === 'kufu') {
+        // 横式・けん算・くふう：あらかじめ引く線はなし
     } else {
     [3, 4].forEach(c => document.getElementById(`cell-r0-c${c}`).classList.add('border-bottom'));
     // 積の下線（ひき算の線）：c1, c2 の下
@@ -3048,12 +3419,48 @@ function initGame() {
     const isTwoDigitDiv = (mode === '2digit_div' || mode === '2digit_div2' || mode === '2digit_div3' || kari2);
     const is3d2dDiv = (mode === '3digit_div1' || mode === '3digit_div2' || (mode === 'karishou' && !kari2));
     const is3d3dDiv = (mode === '3digit_div3');
-    if (!isYoko && mode !== 'kenzan') {
-        document.getElementById((isTwoDigitDiv || is3d2dDiv) ? 'cell-r1-c2' : (is3d3dDiv ? 'cell-r1-c3' : 'cell-r1-c3')).classList.add('paren-left');
+    if (!isYoko && mode !== 'kenzan' && mode !== 'kufu') {
+        document.getElementById((isTwoDigitDiv || is3d2dDiv || mode === 'kentou') ? 'cell-r1-c2' : (is3d3dDiv ? 'cell-r1-c3' : 'cell-r1-c3')).classList.add('paren-left');
     }
 
     // 問題のセット
-    if (mode === 'kenzan') {
+    if (mode === 'kentou') {
+        // かりの商を立てて、かけた積を書いたところまでを出す（ひけない状態）
+        const L = kentouLay;
+        document.getElementById('cell-r1-c0').innerText = Math.floor(divisor / 10);
+        document.getElementById('cell-r1-c1').innerText = divisor % 10;
+        String(dividend).split('').forEach((ch, i) => {
+            document.getElementById(`cell-r1-c${2 + i}`).innerText = ch;
+        });
+        document.getElementById('cell-' + L.qCell).innerText = L.est;   // かりの商
+        writeRight(2, L.onesCol, L.product);                            // 大きすぎた積
+    } else if (mode === 'kufu') {
+        // r1：540 ÷ 60 ／ r2-r3：やじるしと「10でわる」（右は▢）／ r4：54 ÷ ▢ ＝ ▢
+        const L = kufuLay;
+        const put = (row, col, ch) => { document.getElementById(`cell-r${row}-c${col}`).innerText = ch; };
+        String(dividend).split('').forEach((ch, i) => put(1, L.topDvCols[i], ch));
+        put(1, L.opCol, '÷');
+        String(divisor).split('').forEach((ch, i) => put(1, L.topDCols[i], ch));
+        // 上の数から下の数へ引く、長いやじるし（2行ぶん）
+        [L.arrowL, L.arrowR].forEach(c => {
+            document.getElementById(`cell-r2-c${c}`).innerHTML = '<span class="kufu-arrow"></span>';
+        });
+        // やじるしの横のことば。左は「10でわる」をそのまま、右は▢に入れさせる
+        const label = (col, text, span) => {
+            const sp = document.createElement('span');
+            sp.className = 'kufu-label';
+            sp.style.width = (span * 100) + '%';
+            sp.innerText = text;
+            document.getElementById(`cell-r3-c${col}`).appendChild(sp);
+        };
+        label(L.labelL, String(L.num) + L.word, 2);
+        label(L.labelR, L.word, 2);
+        L.inputCols.forEach(c => document.getElementById(`cell-r3-c${c}`).classList.add('kufu-op'));
+        // 下の式（わられる数・÷・＝は出しておく）
+        String(L.ndv).split('').forEach((ch, i) => put(4, L.botDvCols[i], ch));
+        put(4, L.opCol, '÷');
+        put(4, L.eqCol, '=');
+    } else if (mode === 'kenzan') {
         // r1：78 ÷ 23 ＝ 3 … 9 ／ r3：23 × ▢ ＋ ▢ ＝ ▢
         const L = kenLay;
         const put = (row, col, ch) => { document.getElementById(`cell-r${row}-c${col}`).innerText = ch; };
