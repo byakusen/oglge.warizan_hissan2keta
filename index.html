@@ -507,6 +507,98 @@
     /* 赤字はまわりの文字と同じ行にそろえる（位置をずらす指定はしない） */
     .kentou-ans { color: #e53935; font-weight: bold; }
 
+    /* --- 商のけた数モード：□にあてはまる数をさがす --- */
+    .controls.ketasu-mode .action-btn { display: none; }
+    .controls.ketasu-mode .hint-row { display: none; }
+    .controls.ketasu-mode .ketasu-toggle { display: block; }
+    .ketasu-toggle {
+        display: none;
+        background: #eceff1; color: #455a64;
+        border: 2px solid #b0bec5; box-shadow: 0 4px 0 #90a4ae;
+        font-size: 1.05rem; padding: 12px 6px;
+    }
+    .ketasu-toggle.on {
+        background: linear-gradient(145deg, #66bb6a, #43a047);
+        color: #fff; border-color: #388e3c; box-shadow: 0 4px 0 #2e7d32;
+    }
+    .ketasu-toggle:active { box-shadow: 0 0 0 #90a4ae; transform: translateY(4px); }
+    .ketasu-blank {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 0.95em; height: 1.2em;
+        border: 3px solid #e53935; border-radius: 6px;
+        vertical-align: -0.2em;
+        color: #e53935; font-weight: bold;
+    }
+    .ketasu-qbox {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 0.95em; height: 1.2em;
+        border: 3px solid #1e88e5; border-radius: 6px;
+        color: #1565c0; font-weight: bold;
+    }
+    .ketasu-zero { color: #bbb; }
+    /* 筆算ON：下の青枠に 0〜9 をならべ、正解に○・まちがいに✗ */
+    .ketasu-track {
+        display: none;
+        position: absolute;
+        left: 0; right: 0;
+        top: calc(7 * var(--cell-size));
+        height: var(--cell-size);
+        border: 3px solid #1e88e5; border-radius: 8px;
+        box-sizing: border-box;
+        align-items: center;
+        background: rgba(255, 255, 255, 0.65);
+        pointer-events: none;
+    }
+    .ketasu-track.show { display: flex; }
+    .kt-slot {
+        flex: 1; position: relative; height: 100%;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1.5rem; font-weight: bold; color: #555;
+    }
+    .kt-slot .kt-num { position: relative; z-index: 1; }
+    .kt-slot.o::after {
+        content: ''; position: absolute;
+        width: 1.4em; height: 1.4em;
+        border: 3px solid #e53935; border-radius: 50%;
+        left: 50%; top: 50%; transform: translate(-50%, -50%);
+    }
+    .kt-slot.o .kt-num { color: #e53935; }
+    .kt-slot.x::after {
+        content: '✕'; position: absolute;
+        color: #e53935; font-size: 1.7em; font-weight: bold; line-height: 1;
+        left: 50%; top: 50%; transform: translate(-50%, -50%);
+    }
+    .kt-slot.x .kt-num { color: #c62828; opacity: 0.45; }
+    .ketasu-answer {
+        display: none;
+        position: absolute;
+        left: 0; right: 0;
+        top: calc(3.1 * var(--cell-size));
+        justify-content: center; align-items: center;
+        gap: 2px;
+        font-size: 1.8rem; font-weight: bold; color: #333;
+        pointer-events: none;
+    }
+    .ketasu-answer.show { display: flex; }
+    .ketasu-paren { color: #1e88e5; }
+    .ketasu-and { color: #333; margin: 0 6px; font-size: 1.4rem; }
+    .ketasu-box {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 1.4em; height: 1.55em;
+        border: 3px dashed #c5cae9; border-radius: 8px;
+        color: #e53935; margin: 0 2px;
+    }
+    .ketasu-box.active { border-color: #ff9800; background: rgba(255,152,0,0.12); }
+    .ketasu-box.filled { border-style: solid; border-color: #4caf50; }
+    .ketasu-hint {
+        display: none;
+        position: absolute;
+        left: 8px; right: 8px;
+        top: calc(4.6 * var(--cell-size));
+        text-align: center; font-size: 0.95rem; color: #d32f2f; line-height: 1.5;
+    }
+    .ketasu-hint.show { display: block; }
+
     /* 横式：式の横の「…」は少し下げて、数字の下のほうにそろえる */
     .cell.yoko-dots { padding-top: 0.25em; }
 
@@ -765,6 +857,7 @@
         <button class="tab-btn kari-tab" data-mode="karishou">仮の商</button>
         <button class="tab-btn soon-tab" data-mode="kenzan">けん算</button>
         <button class="tab-btn soon-tab" data-mode="kufu">くふう</button>
+        <button class="tab-btn soon-tab" data-mode="ketasu">商のけた数</button>
         <button class="tab-btn soon-tab" data-mode="kentou">商の見当</button>
     </div>
 
@@ -885,6 +978,9 @@
                 <div class="cell" id="cell-r7-c8"></div>
                 <div class="cell" id="cell-r7-c9"></div>
             </div>
+            <div id="ketasu-answer" class="ketasu-answer"></div>
+            <div id="ketasu-hint" class="ketasu-hint"></div>
+            <div id="ketasu-track" class="ketasu-track"></div>
         </div>
 
         <div class="controls">
@@ -905,6 +1001,7 @@
                 <button id="btn-hint" class="hint-btn">ヒント</button>
                 <button id="btn-tashikame" class="tashikame-btn">たしかめ</button>
             </div>
+            <button id="btn-ketasu-fusan" class="ketasu-toggle">筆算：OFF</button>
             <button id="btn-reset" class="reset-btn">もう一度</button>
         </div>
         
@@ -951,6 +1048,9 @@ let kufuLay = null;        // くふうタブ（商の性質）の配置
 let kufuLevel = 'random';  // くふうタブ 'div'（同じ数でわる）/ 'mul'（同じ数をかける）/ 'random'
 let kentouLay = null;      // 商の見当タブ（かりの商のなおし方）の配置
 let kentouBusy = false;    // 商の見当タブ：かけ算を見せている間は二重に動かさない
+let ketasuLay = null;      // 商のけた数タブ（□にあてはまる数さがし）の配置
+let ketasuFusan = false;   // 商のけた数タブ：筆算トグル ON/OFF
+let ketasuBusy = false;    // 商のけた数タブ：筆算アニメ中は入力を受けない
 
 // 固定したい問題がプールの中にあれば取り出す（pool は配列でも {key:配列} でもよい）
 function findForced(pool) {
@@ -999,6 +1099,14 @@ function generateStates() {
             { id: 0, text: 'かりの商をなおそう。', type: 'choice', expect: 'big' },
             { id: 1, text: 'かりの商をなおそう。', type: 'input', expect: () => L.right, targetCell: L.qCell },
             { id: 2, text: 'できました！', type: 'finish' }
+        ];
+        return;
+    }
+    if (mode === 'ketasu') {
+        // 商が10より小さくなる□をさがす。答えをテンキーで順に入れる（はんていは numpad ハンドラ）
+        states = [
+            { id: 0, type: 'ketasu', text: '商が10より小さくなるのは、□がどんな数字のとき？　わかった数を、テンキーで入れよう。' },
+            { id: 1, type: 'finish', text: 'ぜんぶ見つけられたね！' }
         ];
         return;
     }
@@ -1372,6 +1480,31 @@ function generateProblem() {
             onesCol: onesCol, prodCols: prodCols,
             qCell: 'r0-c' + onesCol, target: target
         };
+        return;
+    }
+
+    // --- 商のけた数（商が10より小さくなる□をさがす。わられる数 ＜ わる数×10）---
+    //   わる数×10 を境に、わられる数がそれより小さければ商は1けた（10より小さい）。
+    //   わる数の一の位 r が答えの個数（答えは 0〜r-1）になる。r を 1〜4 にして箱は最大4つ。
+    if (mode === 'ketasu') {
+        let H, U, D;
+        if (forceProblem) {
+            D = forceProblem[1];
+            H = Math.floor(forceProblem[0] / 100);   // わられる数の百の位
+            U = forceProblem[0] % 10;                // わられる数の一の位（十の位は□）
+        } else {
+            const r  = 1 + Math.floor(Math.random() * 4);   // わる数の一の位 1〜4（＝答えの数）
+            const Dt = 2 + Math.floor(Math.random() * 8);   // わる数の十の位 2〜9
+            D = Dt * 10 + r;
+            H = Dt;                                          // わられる数の百の位（＝わる数の十の位）
+            U = Math.floor(Math.random() * 10);             // 一の位（見た目の変化のため）
+        }
+        divisor  = D;
+        dividend = 100 * H + U;                             // 十の位は□（表示は箱）
+        q = 0;
+        const answers = [];
+        for (let t = 0; t <= 9; t++) if (100 * H + 10 * t + U < 10 * D) answers.push(t);
+        ketasuLay = { D: D, H: H, U: U, answers: answers, entered: [], threshold: 10 * D, marks: {} };
         return;
     }
 
@@ -1900,6 +2033,9 @@ function kentouSentence() {
 }
 
 function answerText() {
+    if (mode === 'ketasu') {
+        return `答え（ ${ketasuLay.answers.join('・')} ）`;
+    }
     if (mode === 'kentou') {
         return kentouSentence();
     }
@@ -1919,6 +2055,143 @@ function answerText() {
         if (rem > 0) return `答え（ ${q} ）あまり（ ${rem} ）`;
     }
     return `答え（ ${q} ）`;
+}
+
+// 商のけた数：下の青枠に 0〜9 をならべ、記録（marks）に応じて○/✗をつける
+function renderKetasuTrack() {
+    const wrap = document.getElementById('ketasu-track');
+    if (!wrap || !ketasuLay) return;
+    const marks = ketasuLay.marks || {};
+    wrap.innerHTML = '';
+    for (let d = 0; d <= 9; d++) {
+        const slot = document.createElement('div');
+        slot.className = 'kt-slot';
+        if (marks[d] === 'o') slot.classList.add('o');
+        else if (marks[d] === 'x') slot.classList.add('x');
+        const n = document.createElement('span');
+        n.className = 'kt-num'; n.innerText = d;
+        slot.appendChild(n);
+        wrap.appendChild(slot);
+    }
+}
+
+// 商のけた数：正解ぜんぶに○がついたときの、大きなはなまる
+function showKetasuAllClear() {
+    document.getElementById('hanamaru').classList.add('show');
+    playSound('correct');
+    setTimeout(() => playSound('correct'), 300);
+    if (typeof confetti !== 'undefined') {
+        confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 },
+                   colors: ['#ffeb3b', '#ff9800', '#4caf50', '#00bcd4', '#e91e63'] });
+    }
+}
+
+// 商のけた数：筆算の実演（前の実演をけす。問題の行・青箱・赤箱・下の記録はのこす）
+function ketasuClearDemo() {
+    document.getElementById('cell-r0-c3').innerHTML = '';                 // 商の十の位
+    const qb = document.querySelector('#cell-r0-c4 .ketasu-qbox');
+    if (qb) qb.innerText = '';                                           // 商の一の位（箱はのこす）
+    const rb = document.querySelector('#cell-r1-c3 .ketasu-blank');
+    if (rb) rb.innerText = '';                                           // 赤箱の中身
+    document.getElementById('cell-r1-c5').innerHTML = '';                // ✗
+    for (const c of [1, 2, 3, 4, 5]) {
+        ['r2', 'r3'].forEach(r => {
+            const el = document.getElementById(`cell-${r}-c${c}`);
+            el.innerHTML = '';
+            el.classList.remove('border-bottom', 'border-hidden');
+        });
+    }
+    document.getElementById('hanamaru').classList.remove('show');
+}
+
+// 商のけた数：入れた数字 v で筆算をして、商が2けたなら✗・1けたならはなまる
+function ketasuFusanDemo(v) {
+    if (ketasuBusy) return;
+    ketasuClearDemo();
+    const L = ketasuLay;
+    const DV = 100 * L.H + 10 * v + L.U;   // 赤箱に v を入れたときのわられる数
+    const F2 = 10 * L.H + v;               // 上2けた
+    const rb = document.querySelector('#cell-r1-c3 .ketasu-blank');
+    if (rb) rb.innerText = v;              // 赤箱に v
+    playSound('click');
+    ketasuBusy = true;
+    const T = (fn, ms) => setTimeout(fn, ms);
+
+    if (F2 >= divisor) {
+        // 上2けたにわる数がはいる → 商は十の位から立つ ＝ 2けた ＝ 10以上 → ✗
+        const qt = Math.floor(F2 / divisor);   // 十の位の商（ふつう1）
+        const prod = qt * divisor;             // 十の位の積
+        const diff = F2 - prod;                // ひき算の結果
+        T(() => { document.getElementById('cell-r0-c3').innerText = qt; }, 400);
+        T(() => {
+            // 積を書くと同時に、ひき算の線の場所を「透明」で用意しておく（あとで色を出すだけ＝ずれない）
+            [2, 3].forEach(c => document.getElementById(`cell-r2-c${c}`).classList.add('border-bottom', 'border-hidden'));
+            writeRight(2, 3, prod);
+        }, 900);
+        T(() => { [2, 3].forEach(c => document.getElementById(`cell-r2-c${c}`).classList.remove('border-hidden')); }, 1250);
+        T(() => {
+            if (diff === 0) document.getElementById('cell-r3-c3').innerHTML = '<span class="ketasu-zero">0</span>';
+            else writeRight(3, 3, diff);
+        }, 1550);
+        T(() => {
+            document.getElementById('cell-r1-c5').innerHTML = '<span class="x-mark">✗</span>';
+            ketasuLay.marks[v] = 'x';       // 下の青枠に✗
+            renderKetasuTrack();
+            playSound('wrong');
+            ketasuBusy = false;
+        }, 2000);
+    } else {
+        // 上2けたにわる数がはいらない → 商は一の位だけ ＝ 1けた ＝ 10より小さい → はなまる
+        const q = Math.floor(DV / divisor);    // 一の位の商（10より小さい）
+        const prod = q * divisor;
+        const rem = DV - prod;
+        T(() => { const qb = document.querySelector('#cell-r0-c4 .ketasu-qbox'); if (qb) qb.innerText = q; }, 400);
+        T(() => {
+            [2, 3, 4].forEach(c => document.getElementById(`cell-r2-c${c}`).classList.add('border-bottom', 'border-hidden'));
+            writeRight(2, 4, prod);
+        }, 900);
+        T(() => { [2, 3, 4].forEach(c => document.getElementById(`cell-r2-c${c}`).classList.remove('border-hidden')); }, 1250);
+        T(() => {
+            if (rem === 0) document.getElementById('cell-r3-c4').innerHTML = '<span class="ketasu-zero">0</span>';
+            else writeRight(3, 4, rem);
+        }, 1550);
+        T(() => {
+            ketasuLay.marks[v] = 'o';       // 下の青枠に○（正解音はここでは鳴らさない）
+            renderKetasuTrack();
+            ketasuBusy = false;
+            // 正解ぜんぶに○がついたら、はなまる（このときだけ正解音）
+            if (ketasuLay.answers.every(a => ketasuLay.marks[a] === 'o')) {
+                showKetasuAllClear();
+            }
+        }, 2000);
+    }
+}
+
+// ===== 商のけた数タブ =====
+// 答えの箱を出しなおす：（ □ ）と（ □ ）… 入れた数は左からうめ、いま入れるところをオレンジに
+function renderKetasuAnswers() {
+    const L = ketasuLay;
+    const wrap = document.getElementById('ketasu-answer');
+    if (!wrap || !L) return;
+    wrap.innerHTML = '';
+    for (let i = 0; i < L.answers.length; i++) {
+        if (i > 0) {
+            const t = document.createElement('span');
+            t.className = 'ketasu-and'; t.innerText = 'と';
+            wrap.appendChild(t);
+        }
+        const lp = document.createElement('span');
+        lp.className = 'ketasu-paren'; lp.innerText = '（';
+        wrap.appendChild(lp);
+        const box = document.createElement('span');
+        box.className = 'ketasu-box';
+        if (i < L.entered.length) { box.innerText = L.entered[i]; box.classList.add('filled'); }
+        else if (i === L.entered.length) { box.classList.add('active'); }
+        wrap.appendChild(box);
+        const rp = document.createElement('span');
+        rp.className = 'ketasu-paren'; rp.innerText = '）';
+        wrap.appendChild(rp);
+    }
 }
 
 // ===== 仮の商タブ =====
@@ -2291,10 +2564,16 @@ function updateUI() {
 
     // テンキー表示切替
     const numpad = document.getElementById('numpad');
-    if (s.type === 'input') {
+    if (s.type === 'input' || s.type === 'ketasu') {
         numpad.classList.add('visible');
     } else {
         numpad.classList.remove('visible');
+    }
+
+    // ===== 商のけた数：答えの箱を出しなおす（はんていは numpad ハンドラで行う）=====
+    if (mode === 'ketasu') {
+        renderKetasuAnswers();
+        return;
     }
 
     // ===== 横式（何十÷何十）専用の描画。ここで完結して return =====
@@ -3137,6 +3416,29 @@ document.querySelectorAll('.num-btn').forEach(btn => {
             if (s.type === 'input') kariTry(parseInt(btn.dataset.val, 10));
             return;
         }
+        if (mode === 'ketasu') {
+            const val = parseInt(btn.dataset.val, 10);
+            if (ketasuFusan) {
+                // 筆算ON：入れた数字で筆算を実演（✗ / はなまる）
+                ketasuFusanDemo(val);
+                return;
+            }
+            // 筆算OFF：答えの数字だけ受けつける。同じ数字は1回だけ。全部そろえば終わり
+            if (s.type !== 'ketasu') return;
+            const L = ketasuLay;
+            if (L.answers.includes(val) && !L.entered.includes(val)) {
+                playSound('click');
+                L.entered.push(val);
+                renderKetasuAnswers();
+                if (L.entered.length === L.answers.length) {
+                    state = 1;
+                    showClearEffect();
+                }
+            } else {
+                handleWrong('numpad');
+            }
+            return;
+        }
         if (s.type === 'input') {
             const val = parseInt(btn.dataset.val, 10);
             if (val === s.expect()) {
@@ -3173,6 +3475,14 @@ document.getElementById('btn-hint').addEventListener('click', () => {
         addFingerCover(`r1-c${yokoLay.divisorOnes}`);
         return;
     }
+    if (mode === 'ketasu') {
+        // 商のけた数のヒント：わる数×10 を境に、わられる数がそれより小さいかを考える
+        const L = ketasuLay;
+        const h = document.getElementById('ketasu-hint');
+        h.innerHTML = `${L.D}×10＝${L.threshold} だから、<br>わられる数が ${L.threshold} より小さくなる □ をさがそう。`;
+        h.classList.add('show');
+        return;
+    }
     if (s.type === 'action') {
         document.getElementById(`btn-${s.expect}`).classList.add('hint-glow');
     } else if (s.type === 'click_cell') {
@@ -3207,6 +3517,15 @@ document.getElementById('btn-tashikame').addEventListener('click', () => {
         state++;
         updateUI();
     }
+});
+
+// --- 商のけた数タブ：「筆算」トグル ---
+document.getElementById('btn-ketasu-fusan').addEventListener('click', () => {
+    ketasuFusan = !ketasuFusan;
+    playSound('click');
+    // 同じ問題のまま表示を切りかえる
+    forceProblem = [ketasuLay.H * 100 + ketasuLay.U, ketasuLay.D];
+    initGame();
 });
 
 // --- けん算タブの「かんたん／むずかしい」 ---
@@ -3279,6 +3598,7 @@ const TAB_PROBLEM = {
     '3digit_div3': [506, 123],
     'kenzan':      [78, 23],     // けん算タブを開いたときの1問目
     'kufu':        [540, 60],    // くふうタブを開いたときの1問目
+    'ketasu':      [509, 52],    // 商のけた数タブを開いたときの1問目（教科書と同じ 52)5□9）
     'kentou':      [834, 21]     // 商の見当タブを開いたときの1問目（教科書と同じ）
 };
 const HISSAN_MODES = ['2digit_div', '2digit_div2', '2digit_div3', '3digit_div1', '3digit_div2', '3digit_div3'];
@@ -3361,6 +3681,18 @@ function initGame() {
     document.querySelector('.controls').classList.toggle('ken-mode', isKen);
     document.querySelector('.controls').classList.toggle('kufu-mode', isKufu);
     document.querySelector('.controls').classList.toggle('kentou-mode', mode === 'kentou');
+    document.querySelector('.controls').classList.toggle('ketasu-mode', mode === 'ketasu');
+    // 商のけた数：答えの箱は筆算OFFのときだけ出す
+    document.getElementById('ketasu-answer').classList.toggle('show', mode === 'ketasu' && !ketasuFusan);
+    document.getElementById('ketasu-hint').classList.remove('show');
+    // 商のけた数：下の青枠（0〜9の記録）は筆算ONのときだけ出す
+    document.getElementById('ketasu-track').classList.toggle('show', mode === 'ketasu' && ketasuFusan);
+    if (mode === 'ketasu' && ketasuFusan) renderKetasuTrack();
+    // 筆算トグルの見た目（ON＝緑）
+    const kfBtn = document.getElementById('btn-ketasu-fusan');
+    kfBtn.innerText = '筆算：' + (ketasuFusan ? 'ON' : 'OFF');
+    kfBtn.classList.toggle('on', ketasuFusan);
+    ketasuBusy = false;
     // 仮の商モード：たてる〜おろすの代わりにヒントボタンを出す。上はチュートリアルでなく難易度ボタン
     document.querySelector('.controls').classList.toggle('kari-mode', mode === 'karishou');
     kariBusy = false; kariHint = null;
@@ -3402,6 +3734,9 @@ function initGame() {
     } else if (mode === 'kentou') {
         // 商の見当：わられる数のけた数に合わせて、かっこの上線だけ引く
         kentouLay.dvCols.forEach(c => document.getElementById(`cell-r0-c${c}`).classList.add('border-bottom'));
+    } else if (mode === 'ketasu') {
+        // 商のけた数：わられる数（3けた）の上に、かっこの上線だけ引く
+        [2, 3, 4].forEach(c => document.getElementById(`cell-r0-c${c}`).classList.add('border-bottom'));
     } else if (mode === 'yokoshiki' || mode === 'kenzan' || mode === 'kufu') {
         // 横式・けん算・くふう：あらかじめ引く線はなし
     } else {
@@ -3420,7 +3755,7 @@ function initGame() {
     const is3d2dDiv = (mode === '3digit_div1' || mode === '3digit_div2' || (mode === 'karishou' && !kari2));
     const is3d3dDiv = (mode === '3digit_div3');
     if (!isYoko && mode !== 'kenzan' && mode !== 'kufu') {
-        document.getElementById((isTwoDigitDiv || is3d2dDiv || mode === 'kentou') ? 'cell-r1-c2' : (is3d3dDiv ? 'cell-r1-c3' : 'cell-r1-c3')).classList.add('paren-left');
+        document.getElementById((isTwoDigitDiv || is3d2dDiv || mode === 'kentou' || mode === 'ketasu') ? 'cell-r1-c2' : (is3d3dDiv ? 'cell-r1-c3' : 'cell-r1-c3')).classList.add('paren-left');
     }
 
     // 問題のセット
@@ -3434,6 +3769,16 @@ function initGame() {
         });
         document.getElementById('cell-' + L.qCell).innerText = L.est;   // かりの商
         writeRight(2, L.onesCol, L.product);                            // 大きすぎた積
+    } else if (mode === 'ketasu') {
+        // わる数(2桁) c0,c1 ／ わられる数 H □ U → c2(百), c3(十=□の赤箱), c4(一)
+        const L = ketasuLay;
+        document.getElementById('cell-r1-c0').innerText = Math.floor(divisor / 10);
+        document.getElementById('cell-r1-c1').innerText = divisor % 10;
+        document.getElementById('cell-r1-c2').innerText = L.H;
+        document.getElementById('cell-r1-c3').innerHTML = '<span class="ketasu-blank"></span>';
+        document.getElementById('cell-r1-c4').innerText = L.U;
+        document.getElementById('cell-r0-c4').innerHTML = '<span class="ketasu-qbox"></span>';  // 商を立てる一の位を青□で
+        renderKetasuAnswers();
     } else if (mode === 'kufu') {
         // r1：540 ÷ 60 ／ r2-r3：やじるしと「10でわる」（右は▢）／ r4：54 ÷ ▢ ＝ ▢
         const L = kufuLay;
