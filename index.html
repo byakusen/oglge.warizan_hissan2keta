@@ -849,6 +849,8 @@
         <div style="font-weight: bold; color: #ff5722; font-size: 1.2rem; background: rgba(255,255,255,0.9); padding: 5px 15px; border-radius: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
             🔥 連続正解: <span id="combo-count">0</span>
         </div>
+        <!-- 10問チャレンジのボタンと帯（challenge10 が中身を作る） -->
+        <div id="chal-mount" style="margin-left: 14px;"></div>
     </div>
 
     <div class="settings" id="mode-tabs">
@@ -1026,6 +1028,268 @@
 </div>
 
 <div id="popup">ちがうよ！</div>
+
+<!-- ===== 10問チャレンジ（challenge10.js をそのまま入れたもの）===== -->
+<script>
+/* ============================================================
+   challenge10.js  —  「10問チャレンジ」だけを取り出したもの
+   ------------------------------------------------------------
+   もと：warizan81_kangae.html（小数のかけ算とわり算の筆算）⑪81
+   どんなアプリでも使えるように、CSS と HTML も中に入れてあります。
+   ほかのファイルは いりません（ライブラリなし・ネットもいらない）。
+
+   ■ 使いかた（3つ呼ぶだけ）
+     1. Challenge10.init({ mount: '#どこか', next: () => 次の問題を出す関数() })
+     2. 1問できたら          Challenge10.done()
+     3. まちがえたら          Challenge10.miss()
+
+   ■ そのほか
+     Challenge10.newProblem()  … 新しい問題を出したとき（その問題のミス数を0に）
+     Challenge10.reset()       … 数えなおす（タブを変えたときなど）
+     Challenge10.isOn()        … いまチャレンジ中か
+     Challenge10.stop()        … チャレンジをやめる
+     Challenge10.state         … {on, total, no, miss, missNow, perfect, t0}
+
+   ■ init に わたせるもの（ぜんぶ省略できます）
+     mount       ボタンを置く場所。'#id' か 要素。省略すると <body> の先頭
+     total       何問にするか（初期値 10）
+     next        次の問題を出す関数。これがないと自動で次に進みません
+     nextDelay   はなまるから次の問題までの待ち時間 ms（初期値 1800）
+     resultDelay 最後の問題から成せき表までの待ち時間 ms（初期値 1500）
+     label       ボタンの文字（初期値 '🏁 10問チャレンジ'）
+     sound       ボタンを押したとき鳴らす関数（例: () => playSound('click')）
+     onToggle    on/off が変わったとき呼ばれる関数 (on) => {}
+     onFinish    10問おわったとき呼ばれる関数 (成せき) => {}
+     record      true にすると、その日の最高記録を localStorage に残す
+     recordKey   記録の名前（アプリごとに変える。初期値 'challenge10'）
+     css         false にすると 見た目のCSSを入れない（自分で書くとき）
+   ============================================================ */
+(function (global) {
+    'use strict';
+
+    var CSS = `
+    .chal-btn {
+        font-size: 1rem; font-weight: bold; color: #6a1b9a;
+        background: #f3e5f5; border: 2px solid #ce93d8; border-radius: 20px;
+        padding: 7px 16px; box-shadow: 0 2px 0 #ce93d8; cursor: pointer;
+        font-family: inherit;
+    }
+    .chal-btn.on { color: #fff; background: #8e24aa; border-color: #6a1b9a; box-shadow: 0 2px 0 #4a148c; }
+    .chal-btn:focus-visible, .chal-btns button:focus-visible { outline: 3px solid #8e24aa; outline-offset: 2px; }
+    #chal-bar {
+        display: none; align-items: center; gap: 10px;
+        background: rgba(255,255,255,0.9); border-radius: 20px; padding: 6px 16px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        font-weight: bold; color: #6a1b9a; white-space: nowrap;
+    }
+    #chal-dots { color: #8e24aa; letter-spacing: 2px; font-size: 1.05rem; }
+    #chal-wrap { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    /* おわったときの成せき表 */
+    #chal-result {
+        display: none; position: fixed; left: 0; top: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.45); z-index: 900;
+        align-items: center; justify-content: center;
+    }
+    #chal-result.show { display: flex; }
+    .chal-card {
+        background: #fff; border-radius: 20px; padding: 28px 34px;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.3); text-align: center; max-width: 90vw;
+    }
+    .chal-title { font-size: 1.8rem; font-weight: bold; color: #8e24aa; margin-bottom: 14px; }
+    .chal-lines { font-size: 1.25rem; font-weight: bold; color: #333; line-height: 2; }
+    .chal-lines b { color: #e53935; font-size: 1.5rem; }
+    .chal-msg { margin-top: 10px; color: #ff6f00; }
+    .chal-best { margin-top: 6px; font-size: 1rem; color: #6a1b9a; }
+    .chal-btns { display: flex; gap: 12px; justify-content: center; margin-top: 20px; }
+    .chal-btns button {
+        padding: 12px 20px; font-size: 1.1rem; font-weight: bold; font-family: inherit;
+        border-radius: 14px; cursor: pointer; border: none;
+    }
+    #btn-chal-again { color: #fff; background: #8e24aa; box-shadow: 0 3px 0 #4a148c; }
+    #btn-chal-quit  { color: #6a1b9a; background: #f3e5f5; border: 2px solid #ce93d8; }
+    @media (prefers-reduced-motion: reduce) { .chal-btn, .chal-btns button { transition: none; } }
+    `;
+
+    var BAR_HTML =
+        '<button id="btn-challenge" class="chal-btn" type="button"></button>' +
+        '<div id="chal-bar"><span id="chal-dots"></span><span id="chal-count"></span></div>';
+
+    var RESULT_HTML =
+        '<div class="chal-card">' +
+        '  <div class="chal-title">🏁 <span id="chal-total-title"></span>問 できました！</div>' +
+        '  <div class="chal-lines" id="chal-lines"></div>' +
+        '  <div class="chal-btns">' +
+        '    <button id="btn-chal-again" type="button">もう一度チャレンジ</button>' +
+        '    <button id="btn-chal-quit" type="button">やめる</button>' +
+        '  </div>' +
+        '</div>';
+
+    var cfg = null;
+    var chal = { on: false, total: 10, no: 0, miss: 0, missNow: 0, perfect: 0, t0: 0 };
+    var $ = function (id) { return document.getElementById(id); };
+
+    // --- きょうの記録（localStorage。使えないときは だまって何もしない）---
+    function todayKey() {
+        var d = new Date();
+        return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate();
+    }
+    function loadBest() {
+        if (!cfg.record) return null;
+        try {
+            var raw = localStorage.getItem(cfg.recordKey);
+            if (!raw) return null;
+            var o = JSON.parse(raw);
+            // その日の記録だけ／問題数がちがう記録はまぜない
+            return (o && o.day === todayKey() && o.total === chal.total) ? o : null;
+        } catch (e) { return null; }
+    }
+    function saveBest(perfect, sec) {
+        if (!cfg.record) return null;
+        var best = loadBest();
+        // ノーミスの数が多いほうが上。同じなら 時間が短いほう
+        if (best && (best.perfect > perfect || (best.perfect === perfect && best.sec <= sec))) return best;
+        var o = { day: todayKey(), perfect: perfect, sec: sec, total: chal.total };
+        try { localStorage.setItem(cfg.recordKey, JSON.stringify(o)); } catch (e) { }
+        return o;
+    }
+
+    // --- 帯（○○○●…）の書きかえ ---
+    function chalUpdateBar() {
+        $('btn-challenge').classList.toggle('on', chal.on);
+        $('chal-bar').style.display = chal.on ? 'flex' : 'none';
+        if (!chal.on) return;
+        var dots = '';
+        for (var i = 0; i < chal.total; i++) dots += (i < chal.no) ? '●' : '○';
+        $('chal-dots').innerText = dots;
+        $('chal-count').innerText = Math.min(chal.no + 1, chal.total) + '問め / ' + chal.total;
+    }
+
+    // --- はじめから数えなおす ---
+    function chalReset() {
+        chal.no = 0; chal.miss = 0; chal.missNow = 0; chal.perfect = 0; chal.t0 = Date.now();
+        $('chal-result').classList.remove('show');
+        chalUpdateBar();
+    }
+
+    // --- 1問おわったときに呼ぶ ---
+    function chalDone() {
+        if (!chal.on) return;
+        if (chal.missNow === 0) chal.perfect++;
+        chal.no++;
+        chalUpdateBar();
+        if (chal.no < chal.total) {
+            setTimeout(function () {         // つぎの問題へ
+                if (!chal.on) return;
+                chal.missNow = 0;
+                if (cfg.next) cfg.next();
+            }, cfg.nextDelay);
+            return;
+        }
+        var sec = Math.floor((Date.now() - chal.t0) / 1000);
+        var msg = (chal.perfect === chal.total) ? 'ぜんぶノーミス！ すばらしい！'
+                : (chal.perfect >= chal.total - 2) ? 'よくがんばりました！'
+                : 'つぎは もっとできる！';
+        var best = saveBest(chal.perfect, sec);
+        var result = { perfect: chal.perfect, miss: chal.miss, sec: sec, total: chal.total };
+        setTimeout(function () {
+            $('chal-total-title').innerText = chal.total;
+            $('chal-lines').innerHTML =
+                '<div>ノーミスでできた問題　<b>' + chal.perfect + '</b> / ' + chal.total + '</div>' +
+                '<div>まちがえた回数　<b>' + chal.miss + '</b> 回</div>' +
+                '<div>かかった時間　<b>' + Math.floor(sec / 60) + '</b> 分 <b>' + (sec % 60) + '</b> 秒</div>' +
+                '<div class="chal-msg">' + msg + '</div>' +
+                (best ? '<div class="chal-best">きょうの最高記録　ノーミス ' + best.perfect + ' / ' + best.total +
+                        ' 問　　' + Math.floor(best.sec / 60) + '分' + (best.sec % 60) + '秒</div>' : '');
+            $('chal-result').classList.add('show');
+            $('btn-chal-again').focus();
+            if (cfg.onFinish) cfg.onFinish(result);
+        }, cfg.resultDelay);
+    }
+
+    // --- はじめの用意 ---
+    function init(opt) {
+        opt = opt || {};
+        cfg = {
+            total: opt.total || 10,
+            next: opt.next || null,
+            nextDelay: (opt.nextDelay === undefined) ? 1800 : opt.nextDelay,
+            resultDelay: (opt.resultDelay === undefined) ? 1500 : opt.resultDelay,
+            label: opt.label || '🏁 10問チャレンジ',
+            sound: opt.sound || null,
+            onToggle: opt.onToggle || null,
+            onFinish: opt.onFinish || null,
+            record: !!opt.record,
+            recordKey: opt.recordKey || 'challenge10',
+            css: (opt.css === undefined) ? true : opt.css
+        };
+        chal.total = cfg.total;
+        if (opt.label === undefined && cfg.total !== 10) cfg.label = '🏁 ' + cfg.total + '問チャレンジ';
+
+        // CSS
+        if (cfg.css && !$('chal-style')) {
+            var st = document.createElement('style');
+            st.id = 'chal-style';
+            st.textContent = CSS;
+            document.head.appendChild(st);
+        }
+        // ボタンと帯
+        var host = (typeof opt.mount === 'string') ? document.querySelector(opt.mount) : opt.mount;
+        var wrap = $('chal-wrap');
+        if (!wrap) {
+            wrap = document.createElement('div');
+            wrap.id = 'chal-wrap';
+            wrap.innerHTML = BAR_HTML;
+            if (host) host.appendChild(wrap);
+            else document.body.insertBefore(wrap, document.body.firstChild);
+        }
+        // 成せき表
+        if (!$('chal-result')) {
+            var res = document.createElement('div');
+            res.id = 'chal-result';
+            res.innerHTML = RESULT_HTML;
+            document.body.appendChild(res);
+        }
+        $('btn-challenge').innerText = cfg.label;
+
+        $('btn-challenge').addEventListener('click', function () {
+            chal.on = !chal.on;
+            if (cfg.sound) cfg.sound();
+            chalReset();
+            if (cfg.onToggle) cfg.onToggle(chal.on);
+            if (cfg.next) cfg.next();
+        });
+        $('btn-chal-again').addEventListener('click', function () {
+            chalReset();
+            if (cfg.next) cfg.next();
+        });
+        $('btn-chal-quit').addEventListener('click', function () {
+            chal.on = false;
+            chalReset();
+            if (cfg.onToggle) cfg.onToggle(false);
+            if (cfg.next) cfg.next();
+        });
+
+        chalUpdateBar();
+        return API;
+    }
+
+    var API = {
+        init: init,
+        done: chalDone,                                        // 1問できた
+        miss: function () { if (chal.on) { chal.miss++; chal.missNow++; } },  // まちがえた
+        newProblem: function () { chal.missNow = 0; },          // 新しい問題を出した
+        reset: chalReset,                                       // 数えなおす
+        stop: function () { chal.on = false; chalReset(); },    // やめる
+        isOn: function () { return chal.on; },
+        updateBar: chalUpdateBar,
+        setTotal: function (n) { chal.total = cfg.total = n; chalReset(); },
+        state: chal
+    };
+
+    global.Challenge10 = API;
+    if (typeof module !== 'undefined' && module.exports) module.exports = API;
+})(typeof window !== 'undefined' ? window : this);
+</script>
 
 <script>
 // --- 問題生成と状態管理 ---
@@ -2079,11 +2343,11 @@ function renderKetasuTrack() {
 function showKetasuAllClear() {
     document.getElementById('hanamaru').classList.add('show');
     playSound('correct');
-    setTimeout(() => playSound('correct'), 300);
     if (typeof confetti !== 'undefined') {
         confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 },
                    colors: ['#ffeb3b', '#ff9800', '#4caf50', '#00bcd4', '#e91e63'] });
     }
+    Challenge10.done();   // 10問チャレンジ：1問できた
 }
 
 // 商のけた数：筆算の実演（前の実演をけす。問題の行・青箱・赤箱・下の記録はのこす）
@@ -3211,6 +3475,7 @@ function initDragDrop(spanId, targetId) {
 
 // --- 不正解・クリア演出 ---
 function handleWrong(elementId, expectedAction) {
+    Challenge10.miss();   // 10問チャレンジ：まちがえた回数を数える
     playSound('wrong');
     const popup = document.getElementById('popup');
     popup.classList.add('show');
@@ -3253,7 +3518,6 @@ function handleWrong(elementId, expectedAction) {
 function showClearEffect() {
     document.getElementById('hanamaru').classList.add('show');
     playSound('correct');
-    setTimeout(() => playSound('correct'), 300);
     
     if (typeof confetti !== 'undefined') {
         confetti({
@@ -3300,6 +3564,8 @@ function showClearEffect() {
         }
         document.getElementById('instruction').innerHTML = `${answerText()}<br><span style="font-size: 1rem; color: #d32f2f;">🕒 ${timeTaken}秒！ ${advice}</span>`;
     }, 500);
+
+    Challenge10.done();   // 10問チャレンジ：1問できた（チャレンジ中でなければ何もしない）
 }
 
 // --- イベントリスナー ---
@@ -3535,6 +3801,7 @@ document.querySelectorAll('#ken-level .level-btn').forEach(btn => {
         document.querySelectorAll('#ken-level .level-btn').forEach(b => b.classList.toggle('active', b === btn));
         playSound('click');
         forceProblem = [dividend, divisor];   // 同じ問題のまま並べ方だけ変える
+        if (Challenge10.isOn()) Challenge10.reset();
         initGame();
     });
 });
@@ -3561,6 +3828,7 @@ document.querySelectorAll('#kufu-level .level-btn').forEach(btn => {
         kufuLevel = btn.dataset.kufu;
         document.querySelectorAll('#kufu-level .level-btn').forEach(b => b.classList.toggle('active', b === btn));
         playSound('click');
+        if (Challenge10.isOn()) Challenge10.reset();
         initGame();
     });
 });
@@ -3571,6 +3839,7 @@ document.querySelectorAll('#kari-level .level-btn').forEach(btn => {
         kariLevel = btn.dataset.level;
         document.querySelectorAll('#kari-level .level-btn').forEach(b => b.classList.toggle('active', b === btn));
         playSound('click');
+        if (Challenge10.isOn()) Challenge10.reset();
         initGame();   // その難しさの問題を出しなおす
     });
 });
@@ -3618,6 +3887,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
             currentMode = btn.dataset.mode;
             forceProblem = TAB_PROBLEM[currentMode] || null;
         }
+        if (Challenge10.isOn()) Challenge10.reset();   // タブを変えたら数えなおす
         initGame();
     });
 });
@@ -3629,12 +3899,14 @@ document.querySelectorAll('#hissan-sub .level-btn').forEach(btn => {
         currentMode = btn.dataset.mode;
         forceProblem = TAB_PROBLEM[currentMode];   // 最初の1問はボタンに書いてある問題
         playSound('click');
+        if (Challenge10.isOn()) Challenge10.reset();
         initGame();
     });
 });
 
 // --- 初期化 ---
 function initGame() {
+    Challenge10.newProblem();   // 10問チャレンジ：この問題のミス数を0に
     mode = currentMode;
     // タブの下の行：筆算のときは問題ボタン、仮の商のときは難易度ボタン
     const isHissan = HISSAN_MODES.includes(mode);
@@ -3890,7 +4162,20 @@ function addYokoColumns() {
     }
 }
 
-window.onload = () => { addYokoColumns(); initGame(); };
+window.onload = () => {
+    addYokoColumns();
+    // --- 10問チャレンジの用意 ---
+    Challenge10.init({
+        mount: '#chal-mount',
+        total: 10,
+        next: initGame,                    // 次の1問を出す
+        nextDelay: 2500,                   // はなまるから次の問題まで（ミリ秒）
+        sound: () => playSound('click'),
+        record: false,                     // true にすると「きょうの最高記録」を残す
+        recordKey: 'warizan-2keta'
+    });
+    initGame();
+};
 </script>
 </body>
 </html>
