@@ -117,6 +117,23 @@
         from { transform: scale(0.3); opacity: 0; }
         to   { transform: scale(1); opacity: 1; }
     }
+    /* かけ算の筆算そのものに重ねる、大きな✗（左上のセルに置いて、筆算全体をおおう） */
+    .mult-x {
+        position: absolute;
+        left: 0;
+        top: 0;
+        pointer-events: none;
+        z-index: 25;
+        overflow: visible;
+        animation: xPop 0.35s ease-out;
+    }
+    .mult-x line {
+        stroke: #e53935;
+        stroke-width: 9;
+        stroke-linecap: round;
+        opacity: 0.8;
+        vector-effect: non-scaling-stroke;
+    }
     
     .settings label {
         font-size: 1.1rem;
@@ -2698,7 +2715,7 @@ function clearMultBox(boxRow) {
     });
 }
 
-// 大きすぎたときの✗を、わられる数の下の積の右に出す
+// 大きすぎたときの✗を、わられる数の下の積の右に出す（いまは使っていない。→ showMultX）
 function showWrongX() {
     const el = document.getElementById('cell-r2-c4');
     el.innerHTML = '<span class="x-mark">✗</span>';
@@ -2707,10 +2724,64 @@ function clearWrongX() {
     document.getElementById('cell-r2-c4').innerHTML = '';
 }
 
+// ===== かけ算の筆算につける、大きな✗ =====
+// 筆算の左上のセル（r{boxRow}-c6）に、筆算全体をおおう大きさの✗を重ねる。
+// wide＝筆算のはば（列の数）。ふつうの筆算は3、筆算６（わる数3けた）は4。
+function showMultX(boxRow, wide) {
+    if (wide === undefined) wide = 3;
+    const el = document.getElementById(`cell-r${boxRow}-c6`);
+    if (!el) return;
+    clearMultXAt(boxRow);
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('class', 'mult-x');
+    svg.setAttribute('viewBox', '0 0 100 100');
+    svg.setAttribute('preserveAspectRatio', 'none');
+    svg.style.width = (wide * 100) + '%';
+    svg.style.height = '300%';          // 筆算は3行ぶん
+    svg.innerHTML = '<line x1="8" y1="6" x2="92" y2="94"></line>' +
+                    '<line x1="92" y1="6" x2="8" y2="94"></line>';
+    el.appendChild(svg);
+}
+// その段の✗だけを消す
+function clearMultXAt(boxRow) {
+    const el = document.getElementById(`cell-r${boxRow}-c6`);
+    if (el) el.querySelectorAll('.mult-x').forEach(x => x.remove());
+}
+// ぜんぶの✗を消す
+function clearAllMultX() {
+    document.querySelectorAll('.mult-x').forEach(x => x.remove());
+}
+
+// ===== かけ算の筆算を置く段（スロット）=====
+// 1回目は上（r0から）、2回目は✗のついた1回目を残して1行あけて下（r4から）。
+// 3回目はまた上にもどって、1回目のぶんを消して上書きする。
+const MULT_ROWS = [0, 4];
+let multTry = 0;            // この問題で、かけ算の筆算を何回書いたか
+function nextMultRow() {
+    const row = MULT_ROWS[multTry % MULT_ROWS.length];
+    multTry++;
+    clearMultSlot(row);     // その段に前の筆算（と✗）が残っていれば消してから書く
+    return row;
+}
+// その段のかけ算の筆算（c6〜c9の3行）をまるごと消す
+function clearMultSlot(boxRow) {
+    clearMultXAt(boxRow);
+    for (let r = boxRow; r <= boxRow + 2; r++) {
+        for (let c = 6; c <= 9; c++) {
+            const el = document.getElementById(`cell-r${r}-c${c}`);
+            if (!el) continue;
+            el.innerText = '';
+            el.classList.remove('border-bottom', 'border-hidden', 'fade-in');
+        }
+    }
+}
+
 // 筆算４用：積が3けたになるかけ算の筆算（わる数2桁×商1桁＝積 最大3桁）を右に表示 → わり算(c2,c3,c4)へおろす
-function renderMult3(mult, product, afterDrop) {
+function renderMult3(mult, product, afterDrop, boxRow) {
     if (mult === undefined) mult = q;
     if (product === undefined) product = sub1;
+    if (boxRow === undefined) boxRow = 0;            // 補助計算の開始行
+    const bR0 = boxRow, bR1 = boxRow + 1, bR2 = boxRow + 2;
     const dt = Math.floor(divisor / 10), du = divisor % 10;
     const p3 = Math.floor(product / 100), p2 = Math.floor((product % 100) / 10), p1 = product % 10;
     const show = (id, val) => {
@@ -2718,18 +2789,18 @@ function renderMult3(mult, product, afterDrop) {
         el.innerText = val;
         el.classList.remove('fade-in'); void el.offsetWidth; el.classList.add('fade-in');
     };
-    show('r0-c7', dt); show('r0-c8', du);
-    ['r1-c6', 'r1-c7', 'r1-c8'].forEach(id =>
+    show(`r${bR0}-c7`, dt); show(`r${bR0}-c8`, du);
+    [`r${bR1}-c6`, `r${bR1}-c7`, `r${bR1}-c8`].forEach(id =>
         document.getElementById('cell-' + id).classList.add('border-bottom', 'border-hidden'));
-    setTimeout(() => { show('r1-c6', '×'); show('r1-c8', mult); }, 600);
+    setTimeout(() => { show(`r${bR1}-c6`, '×'); show(`r${bR1}-c8`, mult); }, 600);
     setTimeout(() => {
-        ['r1-c6', 'r1-c7', 'r1-c8'].forEach(id =>
+        [`r${bR1}-c6`, `r${bR1}-c7`, `r${bR1}-c8`].forEach(id =>
             document.getElementById('cell-' + id).classList.remove('border-hidden'));
     }, 1200);
     setTimeout(() => {
-        if (p3) show('r2-c6', p3);
-        else document.getElementById('cell-r2-c6').innerText = '';
-        show('r2-c7', p2); show('r2-c8', p1);
+        if (p3) show(`r${bR2}-c6`, p3);
+        else document.getElementById(`cell-r${bR2}-c6`).innerText = '';
+        show(`r${bR2}-c7`, p2); show(`r${bR2}-c8`, p1);
     }, 1800);
     setTimeout(() => {
         if (p3) { show('r2-c2', p3); document.getElementById('cell-r2-c2').classList.remove('border-hidden'); }
@@ -2771,9 +2842,11 @@ function h5clearProduct(onesCol, row, xCol) {
 function showWrongXAt(row, col) { document.getElementById(`cell-r${row}-c${col}`).innerHTML = '<span class="x-mark">✗</span>'; }
 
 // 筆算６用：わる数3けた × 商1けた = 積3けた（≤999）。右(c7,c8,c9)にかけ算の筆算 → わり算(c3,c4,c5)へおろす。
-function renderMultBox6(mult, product, afterDrop) {
+function renderMultBox6(mult, product, afterDrop, boxRow) {
     if (mult === undefined) mult = q;
     if (product === undefined) product = sub1;
+    if (boxRow === undefined) boxRow = 0;            // 補助計算の開始行
+    const bR0 = boxRow, bR1 = boxRow + 1, bR2 = boxRow + 2;
     const vh = Math.floor(divisor / 100), vt = Math.floor(divisor / 10) % 10, vu = divisor % 10;
     const ph = Math.floor(product / 100), pt = Math.floor(product / 10) % 10, pu = product % 10;
     const show = (id, val) => {
@@ -2781,15 +2854,15 @@ function renderMultBox6(mult, product, afterDrop) {
         el.innerText = val;
         el.classList.remove('fade-in'); void el.offsetWidth; el.classList.add('fade-in');
     };
-    show('r0-c7', vh); show('r0-c8', vt); show('r0-c9', vu);
-    ['r1-c6', 'r1-c7', 'r1-c8', 'r1-c9'].forEach(id =>
+    show(`r${bR0}-c7`, vh); show(`r${bR0}-c8`, vt); show(`r${bR0}-c9`, vu);
+    [`r${bR1}-c6`, `r${bR1}-c7`, `r${bR1}-c8`, `r${bR1}-c9`].forEach(id =>
         document.getElementById('cell-' + id).classList.add('border-bottom', 'border-hidden'));
-    setTimeout(() => { show('r1-c6', '×'); show('r1-c9', mult); }, 600);
+    setTimeout(() => { show(`r${bR1}-c6`, '×'); show(`r${bR1}-c9`, mult); }, 600);
     setTimeout(() => {
-        ['r1-c6', 'r1-c7', 'r1-c8', 'r1-c9'].forEach(id =>
+        [`r${bR1}-c6`, `r${bR1}-c7`, `r${bR1}-c8`, `r${bR1}-c9`].forEach(id =>
             document.getElementById('cell-' + id).classList.remove('border-hidden'));
     }, 1200);
-    setTimeout(() => { show('r2-c7', ph); show('r2-c8', pt); show('r2-c9', pu); }, 1800);
+    setTimeout(() => { show(`r${bR2}-c7`, ph); show(`r${bR2}-c8`, pt); show(`r${bR2}-c9`, pu); }, 1800);
     setTimeout(() => {
         show('r2-c3', ph); show('r2-c4', pt); show('r2-c5', pu);
         ['r2-c3', 'r2-c4', 'r2-c5'].forEach(id =>
@@ -2798,8 +2871,11 @@ function renderMultBox6(mult, product, afterDrop) {
     }, 2800);
 }
 // 筆算６用：補助計算(c7,c8,c9)を消す
-function clearMultBox6() {
-    ['r0-c7', 'r0-c8', 'r0-c9', 'r1-c6', 'r1-c7', 'r1-c8', 'r1-c9', 'r2-c7', 'r2-c8', 'r2-c9'].forEach(id => {
+function clearMultBox6(boxRow) {
+    if (boxRow === undefined) boxRow = 0;
+    const b0 = boxRow, b1 = boxRow + 1, b2 = boxRow + 2;
+    [`r${b0}-c7`, `r${b0}-c8`, `r${b0}-c9`, `r${b1}-c6`, `r${b1}-c7`, `r${b1}-c8`, `r${b1}-c9`,
+     `r${b2}-c7`, `r${b2}-c8`, `r${b2}-c9`].forEach(id => {
         const el = document.getElementById('cell-' + id);
         el.innerText = '';
         el.classList.remove('border-bottom', 'border-hidden', 'fade-in');
@@ -3017,25 +3093,28 @@ function updateUI() {
     if (state === 5 && mode !== '3digit_div2' && mode !== '3digit_div3') { // かけ算1完了
         if (mode === '2digit_div') {
             // あいたスペースに かけ算の筆算を順番に表示し、最後にわり算へ積をおろす
-            renderMultBox();
+            renderMultBox(q, sub1, null, 2, 3, nextMultRow());
         } else if (mode === '2digit_div2') {
             // 大きすぎる商(qBig)でかけ算 → 積(sub1Big)をわられる数の下へ → ✗ → やりなおしへ
+            const bR = nextMultRow();
             renderMultBox(qBig, sub1Big, () => {
-                showWrongX();
+                showMultX(bR);      // かけ算の筆算に大きな✗（この筆算は残す）
                 setTimeout(() => { state = 6; updateUI(); }, 1600);
-            });
+            }, 2, 3, bR);
         } else if (mode === '2digit_div3') {
             // 見当(qBig1)でかけ算 → 積(sub1Big1)をわられる数の下へ → ✗ → 1回目のやりなおしへ
+            const bR = nextMultRow();
             renderMultBox(qBig1, sub1Big1, () => {
-                showWrongX();
+                showMultX(bR);      // かけ算の筆算に大きな✗（この筆算は残す）
                 setTimeout(() => { state = 6; updateUI(); }, 1600);
-            });
+            }, 2, 3, bR);
         } else if (mode === '3digit_div1') {
             // 筆算４：見当(qBig)でかけ算(3けたの積) → わられる数の下へ → ✗ → やりなおしへ
+            const bR = nextMultRow();
             renderMult3(qBig, sub1Big, () => {
-                showWrongX4();
+                showMultX(bR);      // かけ算の筆算に大きな✗（この筆算は残す）
                 setTimeout(() => { state = 6; updateUI(); }, 1600);
-            });
+            }, bR);
         } else if (mode === '3digit1') {
             document.getElementById('cell-r2-c3').innerText = sub1;
             document.getElementById('cell-r2-c3').classList.remove('border-hidden');
@@ -3062,9 +3141,7 @@ function updateUI() {
     }
     // --- 筆算２ 専用の描画 ---
     if (state === 6 && mode === '2digit_div2') {
-        // やりなおし：✗・大きすぎた商・大きすぎた積・かけ算の筆算を消す
-        clearWrongX();
-        clearMultBox();
+        // やりなおし：わられる数の下の積だけを消す（✗のついたかけ算の筆算は残す）
         ['r2-c1', 'r2-c2', 'r2-c3'].forEach(id => {
             const el = document.getElementById('cell-' + id);
             el.innerText = '';
@@ -3077,13 +3154,11 @@ function updateUI() {
     }
     if (state === 9 && mode === '2digit_div2') {
         // 正しい商(q)でかけ算の筆算 → わり算へ積(sub1)をおろす
-        renderMultBox(q, sub1);
+        renderMultBox(q, sub1, null, 2, 3, nextMultRow());
     }
     // --- 筆算３ 専用の描画（立てなおし2回） ---
     if (state === 6 && mode === '2digit_div3') {
-        // 1回目のやりなおし：✗・見当の商・積・かけ算の筆算を消す → 箱＋うっすら見当(qBig1)
-        clearWrongX();
-        clearMultBox();
+        // 1回目のやりなおし：わられる数の下の積だけを消す（✗のついた筆算は残す）→ 箱＋うっすら見当(qBig1)
         ['r2-c2', 'r2-c3'].forEach(id => {
             const el = document.getElementById('cell-' + id);
             el.innerText = '';
@@ -3094,15 +3169,14 @@ function updateUI() {
     }
     if (state === 9 && mode === '2digit_div3') {
         // 修正1の商(qBig2)でかけ算 → 積(sub1Big2)をわられる数の下へ → ✗ → 2回目のやりなおしへ
+        const bR = nextMultRow();
         renderMultBox(qBig2, sub1Big2, () => {
-            showWrongX();
+            showMultX(bR);          // 2回目も✗。1回目の筆算の下に書いてある
             setTimeout(() => { state = 10; updateUI(); }, 1600);
-        });
+        }, 2, 3, bR);
     }
     if (state === 10 && mode === '2digit_div3') {
-        // 2回目のやりなおし：✗・積・かけ算の筆算を消す → 箱＋うっすら修正1(qBig2)
-        clearWrongX();
-        clearMultBox();
+        // 2回目のやりなおし：わられる数の下の積だけを消す → 箱＋うっすら修正1(qBig2)
         ['r2-c2', 'r2-c3'].forEach(id => {
             const el = document.getElementById('cell-' + id);
             el.innerText = '';
@@ -3112,8 +3186,8 @@ function updateUI() {
             '<div class="box-input"><span class="ghost-num">' + qBig2 + '</span></div>';
     }
     if (state === 13 && mode === '2digit_div3') {
-        // 正しい商(q)でかけ算の筆算 → わり算へ積(sub1)をおろす
-        renderMultBox(q, sub1);
+        // 正しい商(q)でかけ算の筆算 → わり算へ積(sub1)をおろす（3回目なので1つ目の筆算に上書き）
+        renderMultBox(q, sub1, null, 2, 3, nextMultRow());
     }
     if (state === 15 && mode === '2digit_div3') {
         // あまりを表示（r3-c2,c3）
@@ -3127,9 +3201,7 @@ function updateUI() {
     }
     // --- 筆算４ 専用の描画（3けた÷2けた・1回修正） ---
     if (state === 6 && mode === '3digit_div1') {
-        // やりなおし：✗・見当の商・積(3けた)・かけ算の筆算を消す → 箱＋うっすら見当(qBig)
-        clearWrongX4();
-        clearMultBox();
+        // やりなおし：わられる数の下の積(3けた)だけを消す（✗のついた筆算は残す）→ 箱＋うっすら見当(qBig)
         ['r2-c2', 'r2-c3', 'r2-c4'].forEach(id => {
             const el = document.getElementById('cell-' + id);
             el.innerText = '';
@@ -3140,7 +3212,7 @@ function updateUI() {
     }
     if (state === 9 && mode === '3digit_div1') {
         // 正しい商(q)でかけ算の筆算(3けたの積) → わり算へ積(sub1)をおろす
-        renderMult3(q, sub1);
+        renderMult3(q, sub1, null, nextMultRow());
     }
     if (state === 11 && mode === '3digit_div1') {
         // あまりを表示（わられる数3けた − 積、右づめで c3,c4 または c4）
@@ -3155,25 +3227,24 @@ function updateUI() {
     // ===== 筆算６ 専用の描画（3けた÷3けた・商1けた・見当✗→立てなおし） =====
     if (state === 5 && mode === '3digit_div3') {
         // 見当(qBig)でかけ算の筆算（右）→ 積(3けた)をわられる数の下に → ✗(c6) → 立てなおしへ
+        const bR = nextMultRow();
         renderMultBox6(qBig, sub1Big, () => {
-            showWrongXAt(2, 6);
+            showMultX(bR, 4);       // わる数3けたなので、はば4マスの✗
             setTimeout(() => { state = 6; updateUI(); }, 1600);
-        });
+        }, bR);
     }
     if (state === 6 && mode === '3digit_div3') {
-        // 立てなおし：✗・大きすぎた積(c3,c4,c5)・かけ算の筆算を消す → 箱＋うっすら見当(qBig)
-        clearMultBox6();
+        // 立てなおし：わられる数の下の積(c3,c4,c5)だけを消す（✗のついた筆算は残す）→ 箱＋うっすら見当(qBig)
         ['r2-c3', 'r2-c4', 'r2-c5'].forEach(id => {
             const el = document.getElementById('cell-' + id);
             el.innerText = ''; el.classList.add('border-hidden');
         });
-        document.getElementById('cell-r2-c6').innerHTML = '';
         document.getElementById('cell-r0-c5').innerHTML =
             '<div class="box-input"><span class="ghost-num">' + qBig + '</span></div>';
     }
     if (state === 9 && mode === '3digit_div3') {
         // 正しい商(q)でかけ算の筆算（右）→ 積(3けた)をわられる数の下に＋ひき算の線
-        renderMultBox6(q, sub1);
+        renderMultBox6(q, sub1, null, nextMultRow());
     }
     if (state === 11 && mode === '3digit_div3') {
         // あまり（わられる数3けた − 積）を右づめで r3 に
@@ -3192,12 +3263,13 @@ function updateUI() {
     if (state === 5 && mode === '3digit_div2') {
         // 見当(est1)でかけ算の筆算（右）→ 積を上2けたの下におろす（右づめ, c3基準）→ ✗ → 立てなおしへ
         renderMultBox(est1, est1 * divisor, () => {
-            showWrongXAt(2, 4);
+            showMultX(0);           // 十の位のかけ算の筆算に✗
             setTimeout(() => { state = 6; updateUI(); }, 1600);
         }, 2, 3);
     }
     if (state === 6 && mode === '3digit_div2') {
         // 立てなおし：✗・大きすぎた積・かけ算の筆算を消す → 箱＋うっすら見当(est1)
+        clearMultXAt(0);
         clearMultBox();
         h5clearProduct(3, 2, 4);
         document.getElementById('cell-r0-c3').innerHTML =
@@ -3236,12 +3308,13 @@ function updateUI() {
     if (state === 17 && mode === '3digit_div2') {
         // 見当(est2)でかけ算の筆算（右・1行あけて下）→ 積を おろした2けたの下に（右づめ, c4基準）→ ✗ → 立てなおしへ
         renderMultBox(est2, est2 * divisor, () => {
-            showWrongXAt(4, 5);
+            showMultX(4);           // 一の位のかけ算の筆算に✗
             setTimeout(() => { state = 18; updateUI(); }, 1600);
         }, 4, 4, 4);
     }
     if (state === 18 && mode === '3digit_div2') {
         // 立てなおし：✗・大きすぎた積・一の位の補助計算だけを消す（十の位の補助計算は残す）
+        clearMultXAt(4);
         clearMultBox(4);
         h5clearProduct(4, 4, 5);
         document.getElementById('cell-r0-c4').innerHTML =
@@ -3930,6 +4003,7 @@ function initGame() {
     // --- 追加: リセット処理 ---
     startTime = Date.now();
     errorStats = { tateru: 0, kakeru: 0, hiku: 0, orosu: 0, other: 0 };
+    multTry = 0;   // かけ算の筆算を書く段（上→下→上…）を1問ごとにもどす
     document.querySelectorAll('.guide-arrow').forEach(el => el.remove());
     
     // UIリセット
