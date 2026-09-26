@@ -4251,5 +4251,356 @@ window.onload = () => {
     initGame();
 };
 </script>
+
+<!-- ============================================================
+     📝 テストの練習 ①せってい（ここだけ先生が直す）
+     どのテストで、どの大問を、どの順に出すか。
+       no    … 帯と成せき表に出す番号（'大問1' など。'1' のように数字だけなら「1問め」）
+       mode  … ひらくタブ（下の MODE_NAME にある名前）
+       prob  … 問題を決めうちする [わられる数, わる数]（書かなければタブの見本問題／ランダム）
+       name  … 成せき表に出す名前（書かなければタブの名前）
+       level … 仮の商タブの難しさ 'easy' / 'hard' / 'random'
+       ken   … けん算タブ 'easy' / 'hard'
+       kufu  … くふうタブ 'div' / 'mul' / 'random'
+       fusan … 商のけた数タブの筆算トグル true / false
+     ============================================================ -->
+<script>
+window.TEST_SETTEI = {
+    button: '📝 テストの練習',
+    nextDelay: 3000,          // はなまるから次の大問までの待ち時間（ミリ秒）
+    tests: [
+        { title: 'わり算の筆算 テスト', items: [
+            { no: '大問1', mode: '2digit_div',  prob: [86, 43] },
+            { no: '大問2', mode: '2digit_div2', prob: [84, 23] },
+            { no: '大問3', mode: '2digit_div3', prob: [54, 15] },
+            { no: '大問4', mode: '3digit_div1', prob: [345, 46] },
+            { no: '大問5', mode: '3digit_div2', prob: [618, 28] },
+            { no: '大問6', mode: '3digit_div3', prob: [506, 123] } ] },
+
+        { title: 'まとめの テスト', items: [
+            { no: '大問1', mode: 'yokoshiki' },
+            { no: '大問2', mode: '2digit_div2' },
+            { no: '大問3', mode: 'karishou', level: 'easy', name: '仮の商（かんたん）' },
+            { no: '大問4', mode: 'kenzan',   ken: 'easy' },
+            { no: '大問5', mode: 'kufu',     kufu: 'div', name: 'くふう（同じ数でわる）' },
+            { no: '大問6', mode: 'ketasu' },
+            { no: '大問7', mode: 'kentou' } ] }
+    ]
+};
+</script>
+
+<!-- ============================================================
+     📝 テストの練習 ②しくみ（warizan版 v1・2026-09-26）— ふつうはさわらない
+     もと：test_renshu.html の ②しくみ（zukei_base1 の土台用）。
+     このアプリは土台が別もの（MODES / setMode / applyJudge がない）なので、
+     いちばん上の「つなぎ」でこのアプリの関数・変数につないである。
+     別のわり算アプリへ移すときは、その「つなぎ」だけ直せばよい。
+     ============================================================ -->
+<script>
+window.TestRun = (function () {
+    'use strict';
+    const S = window.TEST_SETTEI;
+    const $ = id => document.getElementById(id);
+
+    /* ===== ここから：このアプリとのつなぎ ===== */
+
+    // 出せるタブと、成せき表に出す名前
+    const MODE_NAME = {
+        'yokoshiki':   '横式',
+        '2digit_div':  '筆算（86÷43 の型）',
+        '2digit_div2': '筆算（84÷23 の型・立てなおし1回）',
+        '2digit_div3': '筆算（54÷15 の型・立てなおし2回）',
+        '3digit_div1': '筆算（345÷46 の型）',
+        '3digit_div2': '筆算（618÷28 の型・商2けた）',
+        '3digit_div3': '筆算（506÷123 の型）',
+        'karishou':    '仮の商',
+        'kenzan':      'けん算',
+        'kufu':        'くふう',
+        'ketasu':      '商のけた数',
+        'kentou':      '商の見当'
+    };
+
+    // タブ・サブボタンの見た目を、いまのモードに合わせる
+    function syncTabs() {
+        const isH = HISSAN_MODES.includes(currentMode);
+        document.querySelectorAll('#mode-tabs .tab-btn').forEach(b =>
+            b.classList.toggle('active', isH ? b.dataset.group === 'hissan'
+                                             : b.dataset.mode === currentMode));
+        document.querySelectorAll('#hissan-sub .level-btn').forEach(b =>
+            b.classList.toggle('active', b.dataset.mode === currentMode));
+        document.querySelectorAll('#kari-level .level-btn').forEach(b =>
+            b.classList.toggle('active', b.dataset.level === kariLevel));
+        document.querySelectorAll('#ken-level .level-btn').forEach(b =>
+            b.classList.toggle('active', b.dataset.ken === kenLevel));
+        document.querySelectorAll('#kufu-level .level-btn').forEach(b =>
+            b.classList.toggle('active', b.dataset.kufu === kufuLevel));
+    }
+
+    const APP = {
+        has: m => !!MODE_NAME[m],
+        name: it => it.name || MODE_NAME[it.mode] || it.mode,
+        // いまの状態をおぼえる（テストが終わったらここへもどす）
+        save: () => ({ mode: currentMode, level: kariLevel, ken: kenLevel,
+                       kufu: kufuLevel, fusan: ketasuFusan }),
+        // 大問（または元の状態）をひらく
+        open(it) {
+            if (it.level !== undefined) kariLevel   = it.level;
+            if (it.ken   !== undefined) kenLevel    = it.ken;
+            if (it.kufu  !== undefined) kufuLevel   = it.kufu;
+            if (it.fusan !== undefined) ketasuFusan = !!it.fusan;
+            currentMode = it.mode;
+            forceProblem = it.prob || TAB_PROBLEM[it.mode] || null;
+            syncTabs();
+            initGame();
+        },
+        // その大問の問題をもう一度出す（「もう一度」ボタン用）
+        sameProblem(it) { forceProblem = it.prob || TAB_PROBLEM[it.mode] || null; }
+    };
+
+    // 土台がそろっているか
+    const lack = [];
+    if (typeof initGame    !== 'function') lack.push('initGame');
+    if (typeof currentMode !== 'string')   lack.push('currentMode');
+    if (typeof showClearEffect !== 'function') lack.push('showClearEffect');
+    if (typeof handleWrong !== 'function') lack.push('handleWrong');
+    if (!S || !Array.isArray(S.tests) || !S.tests.length) lack.push('TEST_SETTEI.tests');
+    if (lack.length) {
+        console.warn('テストの練習：うごきません →', lack.join('・'));
+        return null;
+    }
+
+    // このアプリの「1問できた」「まちがえた」に相乗りする
+    function hookApp() {
+        const _clear = showClearEffect;
+        showClearEffect = function () { _clear.apply(this, arguments); api.onDone(); };
+        if (typeof showKetasuAllClear === 'function') {
+            const _ket = showKetasuAllClear;
+            showKetasuAllClear = function () { _ket.apply(this, arguments); api.onDone(); };
+        }
+        const _wrong = handleWrong;
+        handleWrong = function () { api.miss(); return _wrong.apply(this, arguments); };
+        // ヒントを見たら 💡
+        ['btn-hint', 'btn-kakusu', 'btn-divup', 'btn-bothup'].forEach(id => {
+            const b = $(id);
+            if (b) b.addEventListener('click', () => { const r = cur(); if (r && r.st === 'todo') r.hint = true; });
+        });
+        // テスト中の「もう一度」は、その大問の問題のまま出しなおす
+        document.addEventListener('click', e => {
+            if (!run || !e.target.closest('#btn-reset')) return;
+            APP.sameProblem(TESTS[run.t].items[run.i]);
+        }, true);
+    }
+
+    /* ===== ここまで：このアプリとのつなぎ ===== */
+
+    // せっていをたしかめる（ないタブはとばす）
+    const TESTS = S.tests.map(t => ({
+        title: t.title || 'テスト',
+        items: (t.items || []).filter(it => {
+            if (it && APP.has(it.mode)) return true;
+            console.warn('テストの練習：タブ「' + (it && it.mode) + '」がないのでとばします（' + t.title + '）');
+            return false;
+        })
+    })).filter(t => t.items.length);
+    if (!TESTS.length) { console.warn('テストの練習：出せる大問がありません'); return null; }
+
+    const waitMs = () => (typeof S.nextDelay === 'number' ? S.nextDelay : 3000);
+    let run = null;      // { t, i, rec:[{miss,hint,st}], back }
+    let myTimer = 0;
+
+    /* ---- 見た目（CSS はここで足す。本体の <style> はさわらない）---- */
+    const css = document.createElement('style');
+    css.textContent = [
+        '#test-mount{position:relative;display:flex;align-items:center;margin-left:14px;}',
+        '#test-btn{font-family:inherit;font-size:1rem;font-weight:bold;color:#00695c;background:#e0f2f1;',
+        '  border:2px solid #4db6ac;border-radius:20px;padding:7px 16px;box-shadow:0 2px 0 #4db6ac;cursor:pointer;white-space:nowrap;}',
+        '#test-btn:hover{background:#b2dfdb;}',
+        '#test-menu{display:none;position:absolute;top:calc(100% + 8px);left:0;z-index:950;background:#fff;',
+        '  border:3px solid #4db6ac;border-radius:16px;padding:10px;box-shadow:0 8px 24px rgba(0,0,0,.2);',
+        '  flex-direction:column;gap:8px;min-width:260px;max-width:92vw;}',
+        '#test-menu.open{display:flex;}',
+        '#test-menu button{font-family:inherit;font-size:1.05rem;font-weight:bold;padding:11px 14px;border-radius:12px;',
+        '  border:3px solid #4db6ac;background:#fff;color:#333;cursor:pointer;display:flex;justify-content:space-between;',
+        '  align-items:center;gap:14px;white-space:nowrap;}',
+        '#test-menu button:hover{background:#e0f2f1;}',
+        '#test-menu small{font-size:.85rem;color:#777;font-weight:normal;}',
+        '#test-bar{display:none;align-items:center;gap:10px;background:rgba(255,255,255,.9);border-radius:20px;',
+        '  padding:6px 12px;box-shadow:0 4px 6px rgba(0,0,0,.1);font-weight:bold;color:#00695c;white-space:nowrap;}',
+        '#test-dots{letter-spacing:2px;font-size:1.1rem;}',
+        '#test-bar button{font-family:inherit;font-size:.85rem;font-weight:bold;padding:4px 12px;border-radius:14px;',
+        '  border:2px solid #b0bec5;background:#fff;color:#607d8b;cursor:pointer;}',
+        '#test-bar button:hover{background:#eceff1;}',
+        'body.testing #test-btn{display:none;}',
+        'body.testing #test-bar{display:flex;}',
+        'body.testing #chal-mount{display:none;}',
+        'body.testing #mode-tabs,body.testing #hissan-sub,body.testing #ken-level,',
+        'body.testing #kufu-level,body.testing #kari-level,body.testing #btn-ketasu-fusan',
+        '  {pointer-events:none;opacity:.45;}',
+        '#test-result{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;',
+        '  align-items:center;justify-content:center;}',
+        '#test-result.show{display:flex;}',
+        '#test-result .tr-card{background:#fff;border-radius:20px;padding:22px 26px;max-width:94vw;max-height:92vh;',
+        '  overflow:auto;box-shadow:0 10px 40px rgba(0,0,0,.3);font-family:inherit;color:#333;}',
+        '#test-result .tr-title{font-size:1.6rem;font-weight:bold;color:#00695c;text-align:center;margin-bottom:12px;}',
+        '#test-result table{border-collapse:collapse;margin:0 auto;font-size:1.05rem;}',
+        '#test-result td{padding:6px 10px;border-bottom:2px dashed #e0e0e0;white-space:nowrap;}',
+        '#test-result td.no{color:#777;}',
+        '#test-result td.r-ok{color:#2e7d32;font-weight:bold;}',
+        '#test-result td.r-ng{color:#e64a19;font-weight:bold;}',
+        '#test-result td.r-sk{color:#9e9e9e;}',
+        '#test-result .tr-sum{text-align:center;margin-top:14px;font-size:1.2rem;font-weight:bold;}',
+        '#test-result .tr-sum b{color:#e64a19;font-size:1.4em;}',
+        '#test-result .tr-btns{display:flex;gap:12px;justify-content:center;margin-top:16px;}',
+        '#test-result button{font-family:inherit;font-size:1.05rem;font-weight:bold;padding:11px 20px;',
+        '  border-radius:14px;cursor:pointer;}',
+        '#test-again{color:#fff;background:#26a69a;border:none;box-shadow:0 3px 0 #00796b;}',
+        '#test-close{color:#607d8b;background:#fff;border:2px solid #b0bec5;}'
+    ].join('\n');
+    document.head.appendChild(css);
+
+    /* ---- ボタン・メニュー・帯（10問チャレンジのとなり）---- */
+    const mount = document.createElement('div');
+    mount.id = 'test-mount';
+    mount.innerHTML =
+          '<button id="test-btn" type="button">' + (S.button || '📝 テストの練習') + '</button>'
+        + '<div id="test-menu">'
+        +   TESTS.map((t, k) => '<button type="button" data-k="' + k + '">' + t.title
+                              + '<small>' + t.items.length + '問</small></button>').join('')
+        + '</div>'
+        + '<div id="test-bar"><span id="test-no"></span><span id="test-dots"></span>'
+        +   '<button id="test-skip" type="button">とばす</button>'
+        +   '<button id="test-stop" type="button">やめる</button></div>';
+    const anchor = $('chal-mount');
+    if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(mount, anchor.nextSibling);
+    else document.body.insertBefore(mount, document.body.firstChild);
+    const res = document.createElement('div');
+    res.id = 'test-result';
+    document.body.appendChild(res);
+
+    // テストが1つだけならメニューを出さずにすぐ始める
+    $('test-btn').addEventListener('click', e => {
+        e.stopPropagation();
+        if (TESTS.length === 1) { start(0); return; }
+        $('test-menu').classList.toggle('open');
+    });
+    $('test-menu').addEventListener('click', e => {
+        const b = e.target.closest('button[data-k]');
+        if (!b) return;
+        $('test-menu').classList.remove('open');
+        start(+b.dataset.k);
+    });
+    document.addEventListener('click', e => {
+        if (!e.target.closest('#test-mount')) $('test-menu').classList.remove('open');
+    });
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Escape') $('test-menu').classList.remove('open');
+    });
+    $('test-skip').addEventListener('click', () => skip());
+    $('test-stop').addEventListener('click', () => stop());
+
+    /* ---- 中身 ---- */
+    function cur() { return run ? run.rec[run.i] : null; }
+    function clearMine() { clearTimeout(myTimer); myTimer = 0; }
+    function bar() {
+        if (!run) return;
+        const T = TESTS[run.t], it = T.items[run.i];
+        $('test-no').textContent = '📝 ' + (/^\d+$/.test(it.no) ? it.no + '問め' : it.no)
+                                 + '（' + (run.i + 1) + '／' + T.items.length + '）';
+        $('test-dots').textContent = run.rec.map((r, i) =>
+            r.st === 'done' ? '●' : r.st === 'skip' ? '－' : (i === run.i ? '◎' : '○')).join('');
+    }
+    function go(i) {
+        clearMine();
+        run.i = i;
+        APP.open(TESTS[run.t].items[i]);
+        bar();
+    }
+    function start(t) {
+        // 10問チャレンジ中なら切る
+        const cb = $('btn-challenge');
+        if (window.Challenge10 && Challenge10.isOn && Challenge10.isOn() && cb) cb.click();
+        res.classList.remove('show');
+        const back = run ? run.back : APP.save();
+        run = { t: t, i: 0, back: back,
+                rec: TESTS[t].items.map(() => ({ miss: 0, hint: false, st: 'todo' })) };
+        document.body.classList.add('testing');
+        go(0);
+    }
+    function next() {
+        if (!run) return;
+        if (run.i + 1 < run.rec.length) go(run.i + 1);
+        else finish();
+    }
+    function skip() {
+        const r = cur();
+        if (!r) return;
+        if (r.st !== 'done') r.st = 'skip';
+        clearMine();
+        next();
+    }
+    function finish() {
+        clearMine();
+        const T = TESTS[run.t];
+        let perfect = 0;
+        const rows = T.items.map((it, i) => {
+            const r = run.rec[i];
+            let tx, c;
+            if (r.st === 'done' && r.miss === 0) { tx = '⭕ ノーミス'; c = 'r-ok'; perfect++; }
+            else if (r.st === 'done')            { tx = 'まちがい ' + r.miss + '回'; c = 'r-ng'; }
+            else                                 { tx = 'とばした'; c = 'r-sk'; }
+            return '<tr><td class="no">' + it.no + '</td><td>' + APP.name(it)
+                 + '</td><td class="' + c + '">' + tx + '</td><td>' + (r.hint ? '💡' : '') + '</td></tr>';
+        }).join('');
+        res.innerHTML = '<div class="tr-card">'
+            + '<div class="tr-title">📝 ' + T.title + '　おわり！</div>'
+            + '<table>' + rows + '</table>'
+            + '<div class="tr-sum">ノーミスでできた問題　<b>' + perfect + '</b> ／ ' + T.items.length + '</div>'
+            + '<div class="tr-btns"><button id="test-again" type="button">もう一度</button>'
+            +   '<button id="test-close" type="button">とじる</button></div>'
+            + '</div>';
+        res.classList.add('show');
+        $('test-again').onclick = () => start(run.t);
+        $('test-close').onclick = () => stop();
+        $('test-again').focus();
+    }
+    // やめる／とじる：始める前のタブ・難しさにもどす
+    function stop() {
+        if (!run) return;
+        const back = run.back;
+        run = null;
+        clearMine();
+        res.classList.remove('show');
+        document.body.classList.remove('testing');
+        APP.open({ mode: back.mode, level: back.level, ken: back.ken,
+                   kufu: back.kufu, fusan: back.fusan });
+    }
+
+    const api = {
+        on: () => !!run,
+        // はなまるが出た＝その大問はおわり。少し待って次の大問へ
+        onDone() {
+            if (!run || res.classList.contains('show')) return !!run;
+            const r = cur();
+            if (r.st === 'done') return true;      // 二重に数えない
+            r.st = 'done';
+            bar();
+            clearMine();
+            myTimer = setTimeout(next, waitMs());
+            return true;
+        },
+        // まちがえた（はなまるのあとは数えない）
+        miss() { const r = cur(); if (r && r.st === 'todo') r.miss++; },
+        // 外から使うとき用
+        start: t => start(t || 0),
+        stop: () => stop(),
+        record: () => run ? JSON.parse(JSON.stringify(run.rec)) : null
+    };
+
+    hookApp();
+    return api;
+})();
+</script>
+<!-- 📝 テストの練習 ここまで -->
+
 </body>
 </html>
