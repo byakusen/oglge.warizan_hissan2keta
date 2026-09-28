@@ -876,8 +876,7 @@
         <button class="tab-btn kari-tab" data-mode="karishou">仮の商</button>
         <button class="tab-btn soon-tab" data-mode="kenzan">けん算</button>
         <button class="tab-btn soon-tab" data-mode="kufu">くふう</button>
-        <button class="tab-btn soon-tab" data-mode="ketasu">商のけた数</button>
-        <button class="tab-btn soon-tab" data-mode="kentou">商の見当</button>
+        <button class="tab-btn ouyou-tab" data-group="ouyou">応用問題</button>
     </div>
 
     <div id="hissan-sub" class="level-wrap">
@@ -896,6 +895,11 @@
         <button class="level-btn" data-kufu="div">同じ数でわる</button>
         <button class="level-btn" data-kufu="mul">同じ数をかける</button>
         <button class="level-btn active" data-kufu="random">ランダム</button>
+    </div>
+    <div id="ouyou-sub" class="level-wrap">
+        <button class="level-btn active" data-mode="ketasu">商のけた数</button>
+        <button class="level-btn" data-mode="kentou">商の見当</button>
+        <button class="level-btn" data-mode="testmon" data-prob="575,23">575÷23</button>
     </div>
     <div id="kari-level" class="level-wrap">
         <button class="level-btn" data-level="easy">かんたん</button>
@@ -3899,6 +3903,7 @@ document.querySelectorAll('#ken-level .level-btn').forEach(btn => {
 document.querySelectorAll('#kufu-level .level-btn').forEach(btn => {
     btn.addEventListener('click', () => {
         kufuLevel = btn.dataset.kufu;
+        currentMode = 'kufu';   // 2500÷50 などの画面からもどるとき
         document.querySelectorAll('#kufu-level .level-btn').forEach(b => b.classList.toggle('active', b === btn));
         playSound('click');
         if (Challenge10.isOn()) Challenge10.reset();
@@ -3956,6 +3961,13 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
                      || document.querySelector('#hissan-sub .level-btn');
             currentMode = sub.dataset.mode;
             forceProblem = TAB_PROBLEM[currentMode];
+        } else if (btn.dataset.group === 'ouyou') {
+            // 「応用問題」タブ：いま選ばれているボタン（商のけた数・商の見当・575÷23）から始める
+            const sub = document.querySelector('#ouyou-sub .level-btn.active')
+                     || document.querySelector('#ouyou-sub .level-btn');
+            currentMode = sub.dataset.mode;
+            forceProblem = sub.dataset.prob ? sub.dataset.prob.split(',').map(Number)
+                                            : (TAB_PROBLEM[currentMode] || null);
         } else {
             currentMode = btn.dataset.mode;
             forceProblem = TAB_PROBLEM[currentMode] || null;
@@ -3977,6 +3989,19 @@ document.querySelectorAll('#hissan-sub .level-btn').forEach(btn => {
     });
 });
 
+// 応用問題の中の選択ボタン（商のけた数・商の見当・575÷23）
+document.querySelectorAll('#ouyou-sub .level-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('#ouyou-sub .level-btn').forEach(b => b.classList.toggle('active', b === btn));
+        currentMode = btn.dataset.mode;
+        forceProblem = btn.dataset.prob ? btn.dataset.prob.split(',').map(Number)
+                                        : (TAB_PROBLEM[currentMode] || null);
+        playSound('click');
+        if (Challenge10.isOn()) Challenge10.reset();
+        initGame();
+    });
+});
+
 // --- 初期化 ---
 function initGame() {
     Challenge10.newProblem();   // 10問チャレンジ：この問題のミス数を0に
@@ -3987,6 +4012,7 @@ function initGame() {
     document.getElementById('kari-level').style.display = (mode === 'karishou') ? 'flex' : 'none';
     document.getElementById('ken-level').style.display = (mode === 'kenzan') ? 'flex' : 'none';
     document.getElementById('kufu-level').style.display = (mode === 'kufu') ? 'flex' : 'none';
+    document.getElementById('ouyou-sub').style.display = (mode === 'ketasu' || mode === 'kentou') ? 'flex' : 'none';
     // これから作るタブ
     const isSoon = SOON_MODES.includes(mode);
     document.querySelector('.main-content').style.display = isSoon ? 'none' : 'flex';
@@ -4252,11 +4278,639 @@ window.onload = () => {
 };
 </script>
 
+<!-- ===== 0を消す筆算（くふう）・商のたつ位（応用問題）===== -->
+<script>
+/* ============================================================
+   テストの問題タブ（testmon v1・2026-09-29）
+   ------------------------------------------------------------
+   テスト（大問3・大問5）と同じ形の問題を練習する画面（mode: 'testmon'）。
+     ・2500÷50   … 0を同じ数ずつ消してから筆算（わりきれる）　 →「くふう」タブの中
+     ・2700÷400  … 0を消して筆算 → 消した0の数だけ、あまりに0をつける →「くふう」タブの中
+     ・575÷23    … 商は何の位からたつか → 十の位・一の位に商をたてる →「応用問題」タブの中
+   ボタンの問題が1問目。そのあとは同じ形の問題がランダムに出る。
+   本体の関数（initGame / showClearEffect / handleWrong / answerText）に
+   うしろからつないでいるので、本体の筆算タブのしくみはさわっていない。
+   テストの練習・10問チャレンジからも使える（mode: 'testmon', prob: [わられる数, わる数]）。
+   ============================================================ */
+(function () {
+    'use strict';
+    const $ = id => document.getElementById(id);
+    const MODE = 'testmon';
+
+    // ボタンの見本問題（テストと同じ数）
+    const EXAMPLE = { zero: [2500, 50], rem: [2700, 400], keta: [575, 23] };
+    const PLACE = ['一', '十', '百', '千'];
+
+    let kind = 'zero';      // いま選んでいる問題の形
+    let active = false;     // このタブを表示中か
+    let P = null;           // いまの問題 { dividend, divisor, k, kind, ... }
+    let steps = [], si = 0, pos = 0;   // 手順・いまの手順・入力中のけた
+    let crossed = {};       // 消した0（'r-c' → true）
+    let msg = '';           // 指示の下に出す一言
+    let hanaHome = null;    // はなまるの元の場所
+    let done = false;
+
+    /* ---------- 見た目 ---------- */
+    const css = document.createElement('style');
+    css.textContent = `
+    .tab-btn.ouyou-tab { color:#e65100; background:#fff3e0; border-color:#ffb74d; box-shadow:0 2px 0 #ffb74d; }
+    .tab-btn.ouyou-tab:hover { background:#ffe0b2; }
+    .tab-btn.ouyou-tab.active { color:#fff; background:#fb8c00; border-color:#ef6c00; box-shadow:0 3px 0 #e65100; }
+    body.testing #ouyou-sub { pointer-events:none; opacity:.45; }
+    #tm-main { display:none; }
+    .tm-cell.auto { color:#1565c0; }
+    /* 0を消した となりの赤い線（商をたてるのは この線まで）*/
+    .tm-cell.vline::before {
+        content:''; position:absolute; left:-2px; top:0; bottom:0; width:3px; background:#e53935; z-index:11;
+    }
+    /* 575÷23 の文（テストと同じ形）*/
+    .tm-sen { text-align:left; font-size:1.2rem; line-height:1.55; }
+    .tm-sen .ind { padding-left:1.4em; }
+    .tm-sen .dot { color:#29b6f6; margin-right:.3em; }
+    .tm-box {
+        display:inline-flex; align-items:center; justify-content:center; vertical-align:middle;
+        min-width:2.6em; height:1.7em; margin:0 .35em; padding:0 .3em; box-sizing:border-box;
+        border:3px solid #64b5f6; border-radius:8px; background:#fff; color:#1565c0; font-size:1.25em;
+    }
+    .tm-box.now { border-color:#0288d1; box-shadow:0 0 0 3px rgba(2,136,209,.25); background:#e1f5fe; }
+    .tm-box.ng  { color:#e53935; }
+    #tm-choices.row.show { display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; }
+    #tm-choices.row button { padding:12px 0; font-size:1.3rem; }
+    #tm-grid {
+        display:grid; gap:0; background-color:white; border-radius:6px;
+        background-image: linear-gradient(to right, #b2ebf2 2px, transparent 2px),
+                          linear-gradient(to bottom, #b2ebf2 2px, transparent 2px);
+        background-size: var(--cell-size) var(--cell-size);
+    }
+    .tm-cell {
+        width:var(--cell-size); height:var(--cell-size); box-sizing:border-box;
+        display:flex; justify-content:center; align-items:center;
+        font-size:2.2rem; font-weight:bold; line-height:1; color:#333;
+        position:relative; user-select:none; overflow:visible;
+    }
+    .tm-cell.mine { color:#1565c0; }
+    .tm-cell.bottom { border-bottom:3px solid #333; }
+    .tm-cell.qline::after {
+        content:''; position:absolute; bottom:-8%; left:0; width:100%; height:3px; background:#333; z-index:10;
+    }
+    .tm-cell.paren::before {
+        content:")"; position:absolute; left:0; top:46%;
+        transform:translate(-50%,-50%) scale(1,1.25); font-size:2.2rem; font-weight:bold; color:#333;
+    }
+    .tm-cell.slot { box-shadow: inset 0 0 0 2px #81d4fa; background:rgba(225,245,254,.6); border-radius:6px; }
+    .tm-cell.now  { box-shadow: inset 0 0 0 3px #0288d1; background:rgba(179,229,252,.8); border-radius:6px; }
+    .tm-cell.tap  { cursor:pointer; }
+    .tm-cell.tap:hover { background:rgba(255,235,59,.35); border-radius:6px; }
+    .tm-cell.cross::after {
+        content:''; position:absolute; left:50%; top:50%; width:100%; height:4px; background:#e53935;
+        border-radius:2px; transform:translate(-50%,-50%) rotate(62deg); z-index:12;
+    }
+    .tm-cell.glow { animation: glow 1s infinite alternate; border-radius:6px; }
+    #tm-choices { display:none; flex-direction:column; gap:10px; }
+    #tm-choices.show { display:flex; }
+    #tm-main .numpad { visibility:visible; opacity:1; }
+    #tm-main .numpad.off { opacity:.35; pointer-events:none; }
+    `;
+    document.head.appendChild(css);
+
+    /* ---------- 部品を置く ---------- */
+    // 「くふう」タブの難しさボタンのうしろに 2500÷50・2700÷400 を足す
+    const level = $('kufu-level');
+    level.insertAdjacentHTML('beforeend',
+          '<button class="level-btn" data-tm="zero">' + EXAMPLE.zero.join('÷') + '</button>'
+        + '<button class="level-btn" data-tm="rem">'  + EXAMPLE.rem.join('÷')  + '</button>');
+    const ouyou = $('ouyou-sub');   // 「応用問題」タブの中（575÷23 のボタンは HTML に書いてある）
+
+    const main = document.createElement('div');
+    main.id = 'tm-main';
+    main.className = 'main-content';
+    main.innerHTML =
+          '<div class="grid-wrapper"><div id="tm-grid"></div></div>'
+        + '<div class="controls">'
+        +   '<div id="tm-choices"></div>'
+        +   '<button id="tm-hint" class="hint-btn">ヒント</button>'
+        +   '<button id="tm-reset" class="reset-btn">もう一度</button>'
+        + '</div>'
+        + '<div style="position: relative;"><div id="tm-numpad" class="numpad">'
+        +   [1,2,3,4,5,6,7,8,9].map(n => '<button class="num-btn" data-v="' + n + '">' + n + '</button>').join('')
+        +   '<div style="visibility:hidden"></div><button class="num-btn" data-v="0">0</button><div style="visibility:hidden"></div>'
+        + '</div></div>';
+    document.querySelector('.main-content').after(main);
+
+    /* ---------- 問題づくり ---------- */
+    const rnd = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
+    const tz = n => { let c = 0; while (n > 0 && n % 10 === 0) { n /= 10; c++; } return c; };
+
+    function genZero() {           // 2100÷70 の形（0を消すとわりきれる）
+        for (let t = 0; t < 500; t++) {
+            const k = Math.random() < 0.6 ? 1 : 2, b = rnd(2, 9), r = Math.random();
+            const qq = r < 0.4 ? rnd(2, 9) * 10 : r < 0.7 ? rnd(2, 9) : rnd(11, 49);
+            const a = b * qq;
+            if (a < 10 || a * 10 ** k > 9999) continue;
+            return [a * 10 ** k, b * 10 ** k];
+        }
+        return EXAMPLE.zero;
+    }
+    function genRem() {            // 5000÷800 の形（0を消して、あまりに0をつける）
+        for (let t = 0; t < 500; t++) {
+            const k = Math.random() < 0.5 ? 1 : 2, b = rnd(2, 9);
+            const a = Math.random() < 0.5 ? rnd(1, 9) * 10 : rnd(10, k === 1 ? 499 : 99);
+            if (a % b === 0 || a < b + 1 || Math.floor(a / b) > 99 || a * 10 ** k > 9999) continue;
+            return [a * 10 ** k, b * 10 ** k];
+        }
+        return EXAMPLE.rem;
+    }
+    function genKeta() {           // 575÷23 の形（3けた÷2けた・十の位から商がたつ・見当がそのまま当たる・あまり0）
+        const two = true;   // テストと同じく、十の位から商がたつ問題だけ
+        for (let t = 0; t < 2000; t++) {
+            const d = rnd(21, 89), dv = rnd(100, 999), qq = Math.floor(dv / d);
+            if (d % 10 === 0) continue;   // 0を消す形とまざらないように
+            if (dv % d !== 0) continue;   // あまりが0になる問題だけ
+            if (P && P.dividend === dv && P.divisor === d) continue;   // 同じ問題が続かないように
+            if (two ? qq < 10 : (qq < 2 || qq > 9)) continue;
+            const s = String(dv).split('').map(Number);
+            let p = 0, cur = s[0];
+            while (cur < d && p < 2) { p++; cur = cur * 10 + s[p]; }
+            let ok = true;
+            for (let i = p; i < 3; i++) {
+                const qd = Math.floor(cur / d);
+                const est = Math.min(9, Math.floor(Math.floor(cur / 10) / Math.floor(d / 10)));
+                if (qd < 1 || est !== qd) { ok = false; break; }
+                if (i < 2) cur = (cur - qd * d) * 10 + s[i + 1];
+            }
+            if (ok) return [dv, d];
+        }
+        return EXAMPLE.keta;
+    }
+    function classify(pr) {
+        const k = tz(pr[1]);
+        if (k > 0 && tz(pr[0]) >= k) return (pr[0] % pr[1] === 0) ? 'zero' : 'rem';
+        return 'keta';
+    }
+
+    /* ---------- 筆算の手順をつくる ---------- */
+    function plan(pr, knd) {
+        const dividend = pr[0], divisor = pr[1];
+        const dvS = String(dividend), dS = String(divisor);
+        const n = dvS.length, ld = dS.length;
+        const k = (knd === 'keta') ? 0 : tz(divisor);
+        const dR = divisor / 10 ** k;                        // 0を消したわる数
+        const s = dvS.slice(0, n - k).split('').map(Number); // 0を消したわられる数
+        const m = s.length;
+        const col = i => ld + 1 + i;
+        const place = i => PLACE[m - 1 - i];
+        const num = (a, b) => Number(s.slice(a, b + 1).join(''));
+        const st = [];
+        let maxRow = 1;
+        const put = (row, endCol, str) => {                  // 右そろえでマスを並べる
+            maxRow = Math.max(maxRow, row);
+            return str.split('').map((ch, j) => ({ r: row, c: endCol - str.length + 1 + j, ch }));
+        };
+
+        if (k > 0) {
+            const dz = [], vz = [];
+            for (let j = 0; j < k; j++) { dz.push({ r: 1, c: ld - j }); vz.push({ r: 1, c: col(n - 1 - j) }); }
+            st.push({ type: 'cross', targets: dz,
+                      text: `わる数の 0 を、タップして消そう。`,
+                      hint: `わる数 ${divisor} の、おしりの 0 を消すよ（${k}こ）。` });
+            st.push({ type: 'cross', targets: vz, vline: col(n - k),
+                      text: `わられる数の 0 も、同じ数だけ消そう。`,
+                      hint: `わる数で消した 0 は ${k}こ。わられる数も、右はしから ${k}こ だけ消すよ。` });
+        }
+
+        let p = 0, cur = s[0];
+        while (cur < dR && p < m - 1) { p++; cur = cur * 10 + s[p]; }
+
+        if (knd === 'keta') {
+            const opts = PLACE.slice(0, m).reverse().map(x => x + 'の位');
+            st.push({ type: 'choice', options: opts, answer: place(p) + 'の位',
+                      text: '商は何の位からたちますか。',
+                      hint: p > 0
+                        ? `${num(0, p - 1)} は ${dR} より小さいので、${place(p - 1)}の位には商がたたないね。${num(0, p)}÷${dR} ならできるよ。`
+                        : `${s[0]} は ${dR} より大きいので、${place(0)}の位から商がたつよ。` });
+        }
+
+        let row = 2, first = true, lastRow = 1, remEnd = col(m - 1), curStart = col(0);
+        const lead = (k > 0) ? `0を消すと ${num(0, m - 1)}÷${dR} になったね。` : '';
+        for (let i = p; i < m; i++) {
+            const qd = Math.floor(cur / dR);
+            const estHint = (dR >= 10)
+                ? `指でかくして見当をつけよう。${Math.floor(cur / 10)}÷${Math.floor(dR / 10)} で、だいたい いくつ？`
+                : `${dR}のだんの九九で、${cur} をこえない いちばん大きい数は？`;
+            st.push({ type: 'input', cells: put(0, col(i), String(qd)),
+                      text: (first ? lead : '') + `${place(i)}の位には、${cur}÷${dR} で商をたてます。いくつ？`,
+                      hint: qd === 0 ? `${cur} は ${dR} より小さいね。` : estHint });
+            first = false;
+            if (qd > 0) {
+                const prod = qd * dR, rem = cur - prod, prS = String(prod);
+                const lineFrom = Math.min(col(i) - prS.length + 1, curStart);
+                const lineCols = [];
+                for (let c = lineFrom; c <= col(i); c++) lineCols.push(c);
+                st.push({ type: 'input', cells: put(row, col(i), prS), line: { r: row, cols: lineCols },
+                          text: `${dR}×${qd} のかけ算をして、答えを書こう。`,
+                          hint: `${dR}×${qd}＝？` });
+                if (i < m - 1) {
+                    if (rem > 0) {
+                        st.push({ type: 'input', cells: put(row + 1, col(i), String(rem)),
+                                  text: `${cur}−${prod} のひき算をして、答えを書こう。`,
+                                  hint: `${cur}−${prod}＝？` });
+                    }
+                    st.push({ type: 'input', cells: put(row + 1, col(i + 1), String(s[i + 1])), src: { r: 1, c: col(i + 1) },
+                              text: (rem === 0 ? `${cur}−${prod}＝0（0は書かないよ）。` : '') + `となりの ${s[i + 1]} をおろそう。`,
+                              hint: `わられる数の ${s[i + 1]} を、まっすぐ下におろすよ。` });
+                    curStart = rem > 0 ? col(i) - String(rem).length + 1 : col(i + 1);
+                    cur = rem * 10 + s[i + 1];
+                    row += 2;
+                } else {
+                    st.push({ type: 'input', cells: put(row + 1, col(i), String(rem)),
+                              text: `${cur}−${prod} のひき算をして、答えを書こう。`,
+                              hint: `${cur}−${prod}＝？` });
+                    lastRow = row + 1; cur = rem;
+                }
+            } else {
+                if (i < m - 1) {
+                    st.push({ type: 'input', cells: put(row - 1, col(i + 1), String(s[i + 1])), src: { r: 1, c: col(i + 1) },
+                              text: `となりの ${s[i + 1]} をおろそう。`,
+                              hint: `わられる数の ${s[i + 1]} を、まっすぐ下におろすよ。` });
+                    cur = cur * 10 + s[i + 1];
+                } else {
+                    lastRow = row - 1;
+                }
+            }
+        }
+        const remR = cur;                                   // 0を消した式のあまり
+        if (k > 0 && remR > 0) {
+            const cells = [];
+            for (let j = 0; j < k; j++) cells.push({ r: lastRow, c: remEnd + 1 + j, ch: '0' });
+            st.push({ type: 'input', cells, zeros: true,
+                      text: `消した 0 の数だけ、あまりに 0 をつけよう。`,
+                      hint: `0を ${k}こ 消したので、あまり ${remR} に 0 を ${k}こ つけるよ。本当のあまりは ${remR * 10 ** k}。` });
+        }
+        st.push({ type: 'finish', text: 'できました！' });
+        return {
+            dividend, divisor, k, knd, dR, n, ld, m, col,
+            q: Math.floor(dividend / divisor), rem: dividend % divisor,
+            rows: Math.max(maxRow + 1, 6), cols: ld + n + 2, steps: st
+        };
+    }
+
+    /* ---------- 575÷23 の形（テストの文のとおりに問う）---------- */
+    // 3けた÷2けたで、十の位から商がたつ問題か
+    function tensStart(pr) {
+        const dv = pr[0], d = pr[1], s = String(dv).split('').map(Number);
+        if (s.length !== 3 || s[0] >= d) return false;
+        const c1 = s[0] * 10 + s[1];
+        if (c1 < d) return false;
+        return ((c1 % d) * 10 + s[2]) >= d;               // 一の位の商も1以上
+    }
+    function planK(pr) {
+        const dividend = pr[0], d = pr[1];
+        const s = String(dividend).split('').map(Number);
+        const ld = String(d).length, n = 3;
+        const col = i => ld + 1 + i;
+        const cur1 = s[0] * 10 + s[1], q1 = Math.floor(cur1 / d), prod1 = q1 * d, rem1 = cur1 - prod1;
+        const cur2 = rem1 * 10 + s[2];
+        const right = (row, endCol, str) => str.split('').map((ch, j) => ({ r: row, c: endCol - str.length + 1 + j, ch }));
+        const pS = String(prod1);
+        const pre = [{ r: 0, c: col(1), ch: String(q1) }]
+            .concat(right(2, col(1), pS))
+            .concat(right(3, col(2), rem1 > 0 ? String(cur2) : String(s[2])));
+        const lineCols = [];
+        for (let c = Math.min(col(1) - pS.length + 1, col(0)); c <= col(1); c++) lineCols.push(c);
+        const c2S = String(cur2);
+        return {
+            dividend, divisor: d, k: 0, knd: 'keta2', ld, n, m: 3, col,
+            q: Math.floor(dividend / d), rem: dividend % d,
+            cur1, q1, cur2, cur2Start: col(2) - c2S.length + 1,
+            rows: 6, cols: ld + n + 2, pre, preLine: { r: 2, cols: lineCols },
+            steps: [
+                { type: 'choice', options: ['百', '十', '一'], answer: '十',
+                  text: '□にあてはまることばや数を書きましょう。',
+                  hint: `${s[0]} は ${d} より小さいので、百の位には商がたたないね。${cur1}÷${d} ならできるよ。` },
+                { type: 'kinput', text: '一の位にたてる商を、テンキーで入れよう。',
+                  hint: `指でかくして見当をつけよう。${Math.floor(cur2 / 10)}÷${Math.floor(d / 10)} で、だいたい いくつ？` },
+                { type: 'finish', text: 'できました！' }
+            ]
+        };
+    }
+    let kAns1 = '', kAns2 = '', kNg = false, busy = false, kTimer = 0, autoTimer = 0;
+    function sentence() {
+        const s = steps[si] || {};
+        const b1 = `<span class="tm-box${s.type === 'choice' ? ' now' : ''}">${kAns1}</span>`;
+        const b2 = `<span class="tm-box${s.type === 'kinput' ? ' now' : ''}${kNg ? ' ng' : ''}">${kAns2}</span>`;
+        return '<div class="tm-sen">'
+            + `<div><span class="dot">●</span>商は${b1}の位からたちます。</div>`
+            + `<div class="ind">十の位には、${P.cur1}÷${P.divisor} で商 ${P.q1} をたてます。</div>`
+            + `<div><span class="dot">●</span>一の位には、${P.cur2}÷${P.divisor} で</div>`
+            + `<div class="ind">商${b2}をたてます。</div>`
+            + '</div>';
+    }
+    // 一の位に v をたてて、かける・ひくを自動ですすめる（まちがった数でもそのまま計算する）
+    function kRun(v) {
+        busy = true; clearTimeout(kTimer);
+        const c2 = P.col(2), d = P.divisor;
+        for (const r of [4, 5]) for (let c = 0; c < P.cols; c++) {
+            const el = cell(r, c); el.innerText = ''; el.classList.remove('bottom', 'auto');
+        }
+        kAns2 = String(v); kNg = false; msg = '';
+        const qc = cell(0, c2); qc.innerText = String(v); qc.classList.add('mine');
+        playSound('click');
+        render();
+        const write = (row, str) => str.split('').forEach((ch, j) => {
+            const el = cell(row, c2 - str.length + 1 + j); el.innerText = ch; el.classList.add('auto');
+        });
+        const prod = v * d, pS = String(prod);
+        kTimer = setTimeout(() => {                       // かける
+            write(4, pS);
+            for (let c = Math.min(c2 - pS.length + 1, P.cur2Start); c <= c2; c++) cell(4, c).classList.add('bottom');
+            kTimer = setTimeout(() => {                   // ひく
+                if (prod > P.cur2) {
+                    kFail(`${d}×${v}＝${prod}。${P.cur2} から ${prod} は ひけないね。商が大きすぎたよ。`);
+                    return;
+                }
+                const rem = P.cur2 - prod;
+                write(5, String(rem));
+                if (rem >= d) { kFail(`あまりの ${rem} が、わる数の ${d} ${rem === d ? 'と同じ' : 'より大きい'}ね。商が小さすぎたよ。`); return; }
+                busy = false;
+                nextStep();                               // はなまる
+            }, 700);
+        }, 700);
+    }
+    function kFail(text) {
+        busy = false; kNg = true;
+        msg = text + ' もう一度、数を入れてみよう。';
+        handleWrong();
+        render();
+    }
+
+    /* ---------- 画面 ---------- */
+    const cell = (r, c) => $(`tm-r${r}-c${c}`);
+
+    function build() {
+        const g = $('tm-grid');
+        g.style.gridTemplateColumns = `repeat(${P.cols}, var(--cell-size))`;
+        g.style.gridTemplateRows = `repeat(${P.rows}, var(--cell-size))`;
+        let h = '';
+        for (let r = 0; r < P.rows; r++)
+            for (let c = 0; c < P.cols; c++) h += `<div class="tm-cell" id="tm-r${r}-c${c}" data-r="${r}" data-c="${c}"></div>`;
+        g.innerHTML = h;
+        String(P.divisor).split('').forEach((ch, j) => { cell(1, 1 + j).innerText = ch; });
+        String(P.dividend).split('').forEach((ch, j) => {
+            cell(1, P.ld + 1 + j).innerText = ch;
+            cell(0, P.ld + 1 + j).classList.add('qline');
+        });
+        cell(1, P.ld + 1).classList.add('paren');
+        // 575÷23 の形：十の位の計算まで書いたところから始める
+        if (P.pre) {
+            P.pre.forEach(x => { cell(x.r, x.c).innerText = x.ch; });   // はじめから書いてある数は黒
+            P.preLine.cols.forEach(c => cell(P.preLine.r, c).classList.add('bottom'));
+        }
+    }
+
+    function render() {
+        document.querySelectorAll('#tm-grid .tm-cell').forEach(el => el.classList.remove('slot', 'now', 'tap', 'glow'));
+        const s = steps[si];
+        const ins = $('instruction');
+        const msgHtml = msg ? `<span style="font-size:1rem;color:#d32f2f;">${msg}</span>` : '';
+        if (P.knd === 'keta2') {
+            ins.innerHTML = sentence() + (msgHtml ? '<div style="width:100%;margin-top:6px;">' + msgHtml + '</div>' : '');
+        } else {
+            ins.innerHTML = s.text + (msgHtml ? '<br>' + msgHtml : '');
+        }
+        const box = $('tm-choices');
+        box.classList.toggle('show', s.type === 'choice');
+        box.classList.toggle('row', P.knd === 'keta2');
+        box.innerHTML = s.type === 'choice'
+            ? s.options.map(o => `<button class="action-btn" data-o="${o}">${o}</button>`).join('') : '';
+        $('tm-numpad').classList.toggle('off', !(s.type === 'input' || (s.type === 'kinput' && !busy)));
+        if (s.type === 'kinput') {
+            const qc = cell(0, P.col(2));
+            if (!qc.innerText) qc.classList.add('now');
+        } else if (s.type === 'input') {
+            s.cells.forEach((x, j) => { if (j >= pos) cell(x.r, x.c).classList.add(j === pos ? 'now' : 'slot'); });
+        } else if (s.type === 'cross') {
+            s.targets.forEach(x => cell(x.r, x.c).classList.add('tap'));
+        }
+    }
+
+    function start(pr) {
+        const knd = classify(pr);
+        P = (knd === 'keta' && tensStart(pr)) ? planK(pr) : plan(pr, knd);
+        steps = P.steps; si = 0; pos = 0; crossed = {}; msg = ''; done = false;
+        clearTimeout(kTimer); clearTimeout(autoTimer); busy = false; kAns1 = ''; kAns2 = ''; kNg = false;
+        // 本体の「たてる」などのボタンが動かないように
+        states = [{ id: 0, type: 'wait', text: '' }]; state = 0;
+        startTime = Date.now();
+        errorStats = { tateru: 0, kakeru: 0, hiku: 0, orosu: 0, other: 0 };
+        dividend = P.dividend; divisor = P.divisor; q = P.q;
+        build();
+        $('hanamaru').classList.remove('show');
+        render();
+    }
+
+    function nextStep() {
+        si++; pos = 0; msg = '';
+        if (steps[si].type === 'finish') {
+            done = true;
+            render();
+            $('tm-numpad').classList.add('off');
+            // 575÷23 の形は、はなまるのあと自動で次の問題へ（テストの練習・10問チャレンジ中はそちらにまかせる）
+            const auto = (P.knd === 'keta2') && !Challenge10.isOn()
+                      && !(window.TestRun && TestRun.on && TestRun.on());
+            showClearEffect();
+            if (auto) autoTimer = setTimeout(() => {
+                if (!active || mode !== MODE) return;
+                Challenge10.newProblem();
+                start(genKeta());
+            }, 2500);
+            return;
+        }
+        render();
+    }
+
+    function wrong(text) {
+        msg = text || '';
+        handleWrong();
+        render();
+    }
+
+    /* ---------- 操作 ---------- */
+    $('tm-numpad').addEventListener('click', e => {
+        const b = e.target.closest('[data-v]');
+        if (b) press(Number(b.dataset.v));
+    });
+    function press(v) {
+        if (!active || done) return;
+        const s = steps[si];
+        if (s.type === 'kinput') { if (!busy) kRun(v); return; }
+        if (s.type !== 'input') return;
+        const x = s.cells[pos];
+        if (String(v) !== x.ch) { wrong(); return; }
+        playSound('click');
+        const el = cell(x.r, x.c);
+        el.innerText = x.ch;
+        el.classList.add('mine');
+        pos++;
+        if (pos >= s.cells.length) {
+            if (s.line) s.line.cols.forEach(c => cell(s.line.r, c).classList.add('bottom'));
+            nextStep();
+        } else {
+            msg = '';
+            render();
+        }
+    }
+    document.addEventListener('keydown', e => {
+        if (!active || !/^[0-9]$/.test(e.key)) return;
+        if (document.body.querySelector('#test-result.show, #chal-result[style*="flex"]')) return;
+        press(Number(e.key));
+    });
+
+    $('tm-grid').addEventListener('click', e => {
+        const el = e.target.closest('.tm-cell');
+        if (!el || !active || done) return;
+        const s = steps[si];
+        if (s.type !== 'cross') return;
+        const r = +el.dataset.r, c = +el.dataset.c, key = r + '-' + c;
+        if (r !== 1 || el.innerText === '' || crossed[key]) return;
+        if (!s.targets.some(x => x.r === r && x.c === c)) {
+            const isDv = c > P.ld, dStep = s.targets[0].c <= P.ld;
+            wrong(el.innerText !== '0' ? '0 だけを消すよ。'
+                : (isDv && dStep) ? 'さきに、わる数の 0 を消そう。'
+                : isDv ? `わる数と同じ数（${P.k}こ）だけ、右はしから消そう。`
+                       : 'おしりの 0 から消そう。');
+            return;
+        }
+        playSound('click');
+        crossed[key] = true;
+        el.classList.add('cross');
+        if (s.targets.every(x => crossed[x.r + '-' + x.c])) {
+            if (s.vline) [0, 1].forEach(r => cell(r, s.vline).classList.add('vline'));
+            nextStep();
+        }
+        else { msg = ''; render(); }
+    });
+
+    $('tm-choices').addEventListener('click', e => {
+        const b = e.target.closest('[data-o]');
+        if (!b || !active || done) return;
+        const s = steps[si];
+        if (b.dataset.o !== s.answer) { wrong(); return; }
+        playSound('click');
+        if (P.knd === 'keta2') kAns1 = s.answer;
+        nextStep();
+    });
+
+    $('tm-hint').addEventListener('click', () => {
+        if (!active || done || busy) return;
+        const s = steps[si];
+        playSound('click');
+        msg = '💡 ' + s.hint;
+        render();
+        if (s.type === 'input') {
+            if (s.src) cell(s.src.r, s.src.c).classList.add('glow');
+        } else if (s.type === 'cross') {
+            s.targets.forEach(x => { if (!crossed[x.r + '-' + x.c]) cell(x.r, x.c).classList.add('glow'); });
+        }
+    });
+
+    $('tm-reset').addEventListener('click', () => {
+        if (!active) return;
+        playSound('click');
+        // テストの練習中は同じ問題、ふだんは同じ形の新しい問題
+        if (window.TestRun && TestRun.on && TestRun.on()) start([P.dividend, P.divisor]);
+        else { Challenge10.newProblem(); start(random(kind)); }
+    });
+
+    level.addEventListener('click', e => {
+        const b = e.target.closest('[data-tm]');
+        if (!b) return;
+        kind = b.dataset.tm;
+        currentMode = MODE;
+        playSound('click');
+        if (Challenge10.isOn()) Challenge10.reset();
+        forceProblem = EXAMPLE[kind];
+        initGame();
+    });
+
+    function random(kd) { return kd === 'zero' ? genZero() : kd === 'rem' ? genRem() : genKeta(); }
+
+    /* ---------- 本体とのつなぎ ---------- */
+    // タブ・下の行のボタンの見た目を、いまの問題に合わせる
+    function syncRows() {
+        const isKeta = (kind === 'keta');
+        ['hissan-sub', 'kari-level', 'ken-level'].forEach(id => { $(id).style.display = 'none'; });
+        level.style.display = isKeta ? 'none' : 'flex';
+        ouyou.style.display = isKeta ? 'flex' : 'none';
+        document.querySelectorAll('#mode-tabs .tab-btn').forEach(b => b.classList.toggle('active',
+            isKeta ? b.dataset.group === 'ouyou' : b.dataset.mode === 'kufu'));
+        level.querySelectorAll('.level-btn').forEach(b => b.classList.toggle('active', b.dataset.tm === kind));
+        ouyou.querySelectorAll('.level-btn').forEach(b => b.classList.toggle('active', isKeta && b.dataset.mode === MODE));
+    }
+    // ほかの画面にもどったとき、ボタンの見た目を本体の状態にもどす
+    function syncBack() {
+        level.querySelectorAll('.level-btn').forEach(b =>
+            b.classList.toggle('active', !b.dataset.tm && b.dataset.kufu === kufuLevel));
+        if (currentMode === 'ketasu' || currentMode === 'kentou')
+            ouyou.querySelectorAll('.level-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === currentMode));
+    }
+
+    function enter() {
+        let pr;
+        if (forceProblem) pr = forceProblem;               // テストの練習・ボタンの見本問題
+        else if (!active) pr = EXAMPLE[kind];              // この画面を開いたとき
+        else pr = random(kind);                            // 10問チャレンジの次の問題など
+        forceProblem = null;
+        kind = classify(pr);
+        syncRows();
+        if (!active) {
+            active = true;
+            document.querySelector('.main-content').style.display = 'none';
+            main.style.display = 'flex';
+            const hm = $('hanamaru');
+            hanaHome = hm.parentNode;
+            main.lastElementChild.appendChild(hm);
+        }
+        mode = MODE;
+        Challenge10.newProblem();
+        start(pr);
+    }
+    function leave() {
+        if (!active) return;
+        active = false;
+        clearTimeout(kTimer); clearTimeout(autoTimer); busy = false;
+        main.style.display = 'none';
+        if (hanaHome) hanaHome.appendChild($('hanamaru'));
+        $('hanamaru').classList.remove('show');
+    }
+
+    const _init = initGame;
+    initGame = function () {
+        if (currentMode === MODE) { enter(); return; }
+        leave();
+        const r = _init.apply(this, arguments);
+        syncBack();
+        return r;
+    };
+    const _ans = answerText;
+    answerText = function () {
+        if (mode !== MODE || !P) return _ans.apply(this, arguments);
+        // 575÷23 の形：文だけ出す。本体がこのあとにつける「○秒！ かんぺき…」は、
+        // 最後の見えない <span> の中に入るので出ない（筆算が下にずれないように）
+        if (P.knd === 'keta2') return sentence() + '<span style="display:none">';
+        return P.rem > 0
+            ? `${P.dividend}÷${P.divisor} ＝ ${P.q} あまり ${P.rem}`
+            : `${P.dividend}÷${P.divisor} ＝ ${P.q}`;
+    };
+})();
+</script>
+
 <!-- ============================================================
      📝 テストの練習 ①せってい（ここだけ先生が直す）
      どのテストで、どの大問を、どの順に出すか。
        no    … 帯と成せき表に出す番号（'大問1' など。'1' のように数字だけなら「1問め」）
        mode  … ひらくタブ（下の MODE_NAME にある名前）
+               'testmon' は 0を消す筆算・商のたつ位。prob で形がきまる
+               （[2500,50] のように 0 があれば「くふう」、[575,23] なら「応用問題」の中に出る）
        prob  … 問題を決めうちする [わられる数, わる数]（書かなければタブの見本問題／ランダム）
        name  … 成せき表に出す名前（書かなければタブの名前）
        level … 仮の商タブの難しさ 'easy' / 'hard' / 'random'
@@ -4284,7 +4938,12 @@ window.TEST_SETTEI = {
             { no: '大問4', mode: 'kenzan',   ken: 'easy' },
             { no: '大問5', mode: 'kufu',     kufu: 'div', name: 'くふう（同じ数でわる）' },
             { no: '大問6', mode: 'ketasu' },
-            { no: '大問7', mode: 'kentou' } ] }
+            { no: '大問7', mode: 'kentou' } ] },
+
+        { title: 'くふうして筆算・商のたつ位 テスト', items: [
+            { no: '大問3①', mode: 'testmon', prob: [2500, 50],  name: 'くふうして筆算（2500÷50）' },
+            { no: '大問3②', mode: 'testmon', prob: [2700, 400], name: 'くふうして筆算（2700÷400）' },
+            { no: '大問5',  mode: 'testmon', prob: [575, 23],   name: '商のたつ位（575÷23）' } ] }
     ]
 };
 </script>
@@ -4317,15 +4976,21 @@ window.TestRun = (function () {
         'kenzan':      'けん算',
         'kufu':        'くふう',
         'ketasu':      '商のけた数',
-        'kentou':      '商の見当'
+        'kentou':      '商の見当',
+        'testmon':     'くふうして筆算／商のたつ位'
     };
 
     // タブ・サブボタンの見た目を、いまのモードに合わせる
     function syncTabs() {
         const isH = HISSAN_MODES.includes(currentMode);
+        const isO = (currentMode === 'ketasu' || currentMode === 'kentou');
+        // testmon のタブ・ボタンは、その画面をひらくときに自分で合わせる
         document.querySelectorAll('#mode-tabs .tab-btn').forEach(b =>
             b.classList.toggle('active', isH ? b.dataset.group === 'hissan'
+                                       : isO ? b.dataset.group === 'ouyou'
                                              : b.dataset.mode === currentMode));
+        document.querySelectorAll('#ouyou-sub .level-btn').forEach(b =>
+            b.classList.toggle('active', b.dataset.mode === currentMode && !b.dataset.prob));
         document.querySelectorAll('#hissan-sub .level-btn').forEach(b =>
             b.classList.toggle('active', b.dataset.mode === currentMode));
         document.querySelectorAll('#kari-level .level-btn').forEach(b =>
@@ -4333,7 +4998,7 @@ window.TestRun = (function () {
         document.querySelectorAll('#ken-level .level-btn').forEach(b =>
             b.classList.toggle('active', b.dataset.ken === kenLevel));
         document.querySelectorAll('#kufu-level .level-btn').forEach(b =>
-            b.classList.toggle('active', b.dataset.kufu === kufuLevel));
+            b.classList.toggle('active', !!b.dataset.kufu && b.dataset.kufu === kufuLevel));
     }
 
     const APP = {
@@ -4380,7 +5045,7 @@ window.TestRun = (function () {
         const _wrong = handleWrong;
         handleWrong = function () { api.miss(); return _wrong.apply(this, arguments); };
         // ヒントを見たら 💡
-        ['btn-hint', 'btn-kakusu', 'btn-divup', 'btn-bothup'].forEach(id => {
+        ['btn-hint', 'btn-kakusu', 'btn-divup', 'btn-bothup', 'tm-hint'].forEach(id => {
             const b = $(id);
             if (b) b.addEventListener('click', () => { const r = cur(); if (r && r.st === 'todo') r.hint = true; });
         });
