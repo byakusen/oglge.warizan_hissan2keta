@@ -875,6 +875,7 @@
         <button class="tab-btn active" data-group="hissan">筆算</button>
         <button class="tab-btn kari-tab" data-mode="karishou">仮の商</button>
         <button class="tab-btn soon-tab" data-mode="kenzan">けん算</button>
+        <button class="tab-btn bun-tab" data-mode="bunsho">文章題</button>
         <button class="tab-btn soon-tab" data-mode="kufu">くふう</button>
         <button class="tab-btn ouyou-tab" data-group="ouyou">応用問題</button>
     </div>
@@ -4904,6 +4905,419 @@ window.onload = () => {
 })();
 </script>
 
+<!-- ===== 文章題（式・計算・答え）===== -->
+<script>
+/* ============================================================
+   文章題タブ（bunsho v1・2026-10-11）
+   ------------------------------------------------------------
+   テストの「文章題」と同じ流れで練習する画面（mode: 'bunsho'）。
+     1. 式　 … 問題の文の数をタップして、わられる数 → わる数 の順に入れる
+     2. 計算 … 式ができると、商（あまり）が自動で出る
+     3. 答え … （　）の中の数をテンキーで入れる
+   問題の形は3つ（下のボタン）。どれも数・場面はランダム。
+     ・わりきれる　 … 2けた÷2けた（いくつ分・1人分）
+     ・あまりがある … 3けた÷2けた（何こ買えて何円のこる など）
+     ・何倍　　　　 … 3けた÷2けた（何倍かを求める）
+   本体の initGame / answerText に、うしろからつないでいる。
+   本体では SOON_MODES に 'bunsho' を入れて、本体の筆算の画面をかくすだけにしている。
+   ============================================================ */
+(function () {
+    'use strict';
+    const $ = id => document.getElementById(id);
+    const MODE = 'bunsho';
+    if (typeof SOON_MODES !== 'undefined' && !SOON_MODES.includes(MODE)) SOON_MODES.push(MODE);
+
+    let kind = 'random';      // えらんでいるボタン
+    let active = false;
+    let P = null;             // いまの問題
+    let steps = [], si = 0, typed = '';
+    let msg = '', done = false, autoTimer = 0, hanaHome = null;
+    let stepTimer = 0;        // 計算の答えを自動で出すタイマー
+    let bag = [], lastKind = '';
+
+    /* ---------- 問題の場面 ---------- */
+    // {A}＝わられる数、{B}＝わる数（どちらもタップできる数になる）。ans の数字は（　）の番号（0＝商、1＝あまり）
+    const SCENES = {
+        ikutsu: [
+            { pic: '🍊', text: 'みかんが {A}こ あります。{B}こずつ ふくろに 入れると、何ふくろ できますか。', ans: [0, 'ふくろ'], tobun: false },
+            { pic: '✏️', text: 'えんぴつが {A}本 あります。{B}本ずつ たばに すると、何たば できますか。', ans: [0, 'たば'], tobun: false },
+            { pic: '📖', text: '{A}ページの 本を、1日に {B}ページずつ 読みます。何日で 読み終わりますか。', ans: [0, '日'], tobun: false },
+            { pic: '🙋', text: '子どもが {A}人 います。{B}人ずつの グループを 作ると、何グループ できますか。', ans: [0, 'グループ'], tobun: false },
+            { pic: '🍪', text: 'クッキーが {A}まい あります。{B}人で 同じ数ずつ 分けると、1人分は 何まいに なりますか。', ans: [0, 'まい'], tobun: true }
+        ],
+        amari: [
+            { pic: '📒', text: '{A}円で ノートを 買います。1さつ {B}円の ノートを 買うと、何さつ 買えて、何円 のこりますか。', ans: [0, 'さつ 買えて、', 1, '円 のこる'], money: true },
+            { pic: '🍎', text: 'りんごが {A}こ あります。{B}こずつ 箱に つめると、何箱 できて、何こ あまりますか。', ans: [0, '箱 できて、', 1, 'こ あまる'] },
+            { pic: '🎀', text: 'リボンが {A}cm あります。{B}cm ずつ 切ると、何本 できて、何cm あまりますか。', ans: [0, '本 できて、', 1, 'cm あまる'] },
+            { pic: '🃏', text: 'カードが {A}まい あります。{B}人で 同じ数ずつ 分けると、1人分は 何まいに なって、何まい あまりますか。', ans: ['1人分は ', 0, 'まいで、', 1, 'まい あまる'], tobun: true }
+        ],
+        bai: [
+            { pic: '📏', text: '青い テープの 長さは {B}cm、赤い テープの 長さは {A}cm です。赤い テープの 長さは、青い テープの 長さの 何倍ですか。', ans: [0, '倍'] },
+            { pic: '🐟', text: '池に メダカが {A}ぴき、金魚が {B}ひき います。メダカの 数は、金魚の 数の 何倍ですか。', ans: [0, '倍'] },
+            { pic: '🎨', text: 'えんぴつは 1本 {B}円、絵の具セットは {A}円です。絵の具セットの ねだんは、えんぴつの ねだんの 何倍ですか。', ans: [0, '倍'] },
+            { pic: '🏫', text: '学校から 駅までは {A}m、学校から 公園までは {B}m です。駅までの 道のりは、公園までの 道のりの 何倍ですか。', ans: [0, '倍'] }
+        ]
+    };
+    // テストに出た数（そのままは使わない）
+    const TEST_NUM = ['78,13', '900,65', '640,40'];
+
+    /* ---------- 問題づくり ---------- */
+    const rnd = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
+    const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+    function nums(kd, sc) {
+        for (let t = 0; t < 1000; t++) {
+            let a, b;
+            if (kd === 'ikutsu') {          // 2けた÷2けた・わりきれる
+                b = rnd(12, 39); if (b % 10 === 0) continue;
+                a = b * rnd(2, 9); if (a > 99) continue;
+            } else if (kd === 'amari') {    // 3けた÷2けた・あまりあり・商は2けた
+                b = rnd(21, 89); if (b % 10 === 0) continue;
+                a = sc.money ? rnd(3, 9) * 100 : rnd(300, 999);
+                const qq = Math.floor(a / b);
+                if (qq < 10 || a % b === 0) continue;
+            } else {                         // 何倍：3けた÷2けた・わりきれる・商は2けた
+                b = Math.random() < 0.3 ? rnd(2, 6) * 10 : rnd(12, 59);
+                a = b * rnd(11, 25); if (a < 100 || a > 999) continue;
+            }
+            if (TEST_NUM.includes(a + ',' + b)) continue;
+            if (P && P.a === a && P.b === b) continue;
+            return [a, b];
+        }
+        return kd === 'ikutsu' ? [84, 14] : kd === 'amari' ? [800, 63] : [480, 30];
+    }
+    function nextKind() {
+        if (kind !== 'random') return kind;
+        if (!bag.length) {
+            bag = ['ikutsu', 'amari', 'bai'].sort(() => Math.random() - 0.5);
+            if (bag[0] === lastKind) bag.push(bag.shift());
+        }
+        lastKind = bag.shift();
+        return lastKind;
+    }
+    function make(kd, pr) {
+        const sc = pick(SCENES[kd]);
+        const [a, b] = pr || nums(kd, sc);
+        return { kd, sc, a, b, q: Math.floor(a / b), r: a % b };
+    }
+    // テストの練習などで [わられる数, わる数] が決まっているとき
+    function fromProb(pr) {
+        const kd = (pr[0] % pr[1] !== 0) ? 'amari' : (pr[0] >= 100 ? 'bai' : 'ikutsu');
+        return make(kd, pr);
+    }
+
+    /* ---------- 手順 ---------- */
+    function plan() {
+        const { kd, sc, a, b, q, r } = P;
+        const hasR = (kd === 'amari');
+        const tA = (kd === 'bai')
+            ? '「〜の 何倍」の 〜 が、もとに する大きさ（1と みる大きさ）だよ。くらべる大きさを、もとに する大きさで わるよ。'
+            : sc.tobun ? 'ぜんぶの数を、分ける 人数で わるよ。わられる数は、ぜんぶの数だね。'
+                       : 'ぜんぶの数を、1つ分の数で わるよ。わられる数は、ぜんぶの数だね。';
+        const tB = (kd === 'bai') ? 'もとに する大きさで わるよ。'
+                 : sc.tobun ? '分ける 人数で わるよ。' : '1つ分の数で わるよ。';
+        const a10 = Math.floor(a / 10), b10 = Math.floor(b / 10);
+        let tQ;
+        if (kd === 'ikutsu') tQ = `わる数の 一の位を 指で かくして、${a10}÷${b10} で 見当を つけよう。`;
+        else if (b % 10 === 0 && a % 10 === 0) tQ = `0を 1こずつ 消して、${a / 10}÷${b / 10} で 計算しても いいよ。`;
+        else tQ = `${a10} は ${b} より 大きいから、十の位から 商が たつよ。筆算で 計算しよう。`;
+        const s = [
+            { box: 'e0', type: 'tap', val: a, text: '式を 書こう。<b>わられる数</b>を、問題の 文から タップしよう。', hint: tA },
+            { box: 'e1', type: 'tap', val: b, text: '<b>わる数</b>を、問題の 文から タップしよう。', hint: tB },
+            { box: 'eq', type: 'auto', val: q, text: '式が できたね。計算の 答えが 出るよ。', hint: tQ }
+        ];
+        if (hasR) s.push({ box: 'er', type: 'auto', val: r, text: '式が できたね。計算の 答えが 出るよ。',
+                           hint: `${b}×${q}＝${b * q}。${a} から ${b * q} を ひいてみよう。` });
+        s.push({ box: 'a0', type: 'num', val: q, text: '<b>答え</b>を 書こう。（　）に 数を 入れよう。',
+                 hint: `式の 答えの 商（${q}）を 書くよ。` });
+        if (hasR) s.push({ box: 'a1', type: 'num', val: r, text: '<b>答え</b>の つづきを 入れよう。',
+                           hint: `式の 答えの あまり（${r}）を 書くよ。` });
+        s.push({ type: 'finish' });
+        return s;
+    }
+
+    /* ---------- 見た目 ---------- */
+    const css = document.createElement('style');
+    css.textContent = `
+    .tab-btn.bun-tab { color:#ad1457; background:#fce4ec; border-color:#f48fb1; box-shadow:0 2px 0 #f48fb1; }
+    .tab-btn.bun-tab:hover { background:#f8bbd0; }
+    .tab-btn.bun-tab.active { color:#fff; background:#d81b60; border-color:#ad1457; box-shadow:0 3px 0 #880e4f; }
+    #bun-sub .level-btn { background:#fce4ec; color:#ad1457; border-color:#f48fb1; }
+    #bun-sub .level-btn:hover { background:#f8bbd0; }
+    #bun-sub .level-btn.active { background:#d81b60; color:#fff; border-color:#ad1457; }
+    body.testing #bun-sub { pointer-events:none; opacity:.45; }
+    #bn-main { display:none; gap:24px; }
+    .bn-ans { display:inline-flex; align-items:center; flex-wrap:nowrap; white-space:nowrap; gap:2px; }
+    #bn-main .numpad { visibility:visible; opacity:1; }
+    #bn-main .numpad.off { opacity:.35; pointer-events:none; }
+    .bn-card {
+        position:relative; flex:1; min-width:0; background:#fff; border:2px solid #00bcd4; border-radius:12px;
+        padding:16px 20px 18px; box-sizing:border-box; display:flex; flex-direction:column; gap:16px;
+    }
+    .bn-q { display:flex; gap:14px; align-items:flex-start; }
+    .bn-text { flex:1; font-size:1.35rem; font-weight:bold; line-height:1.9; color:#333; }
+    .bn-pic { font-size:3.4rem; line-height:1; background:#fff8e1; border-radius:16px; padding:10px 12px; }
+    .bn-num {
+        display:inline-block; font-size:1.55em; line-height:1.1; padding:0 .12em; margin:0 .08em;
+        border-radius:8px; border-bottom:3px dotted transparent; cursor:default; transition:background .15s;
+    }
+    .bn-card.tapping .bn-num { cursor:pointer; border-bottom-color:#90caf9; }
+    .bn-card.tapping .bn-num:hover { background:rgba(255,235,59,.4); }
+    .bn-num.used { background:#e3f2fd; }
+    .bn-row { display:flex; align-items:center; flex-wrap:wrap; gap:6px 4px; font-size:1.5rem; font-weight:bold; color:#333; }
+    .bn-lab {
+        font-size:1.05rem; color:#1565c0; border:2px solid #64b5f6; background:#e3f2fd; border-radius:8px;
+        padding:2px 10px; margin-right:10px;
+    }
+    .bn-lab.ans { color:#00695c; border-color:#4db6ac; background:#e0f2f1; }
+    .bn-op { margin:0 .25em; }
+    .bn-box {
+        display:inline-flex; align-items:center; justify-content:center; min-width:2.6em; height:1.75em;
+        padding:0 .3em; box-sizing:border-box; border:3px solid #cfd8dc; border-radius:8px; background:#fafafa;
+        color:#1565c0; font-size:1.15em; letter-spacing:.04em;
+    }
+    .bn-box.now { border-color:#0288d1; background:#e1f5fe; box-shadow:0 0 0 3px rgba(2,136,209,.25); }
+    .bn-box.ok { border-color:#90caf9; background:#fff; }
+    .bn-paren { font-size:1.6em; font-weight:normal; color:#1e88e5; margin:0 .15em; }
+    .bn-msg { min-height:1.4em; font-size:1rem; font-weight:bold; color:#d32f2f; }
+    .bn-msg.hint { color:#2e7d32; }
+    #bn-main .controls { min-width:118px; }
+    /* タブレットのたて向きなど：問題を上に広く、ボタンとテンキーを下にならべる */
+    @media (max-width: 1000px) {
+        #bn-main { flex-wrap:wrap; justify-content:center; }
+        #bn-main .bn-card { flex:1 1 100%; }
+    }
+    @media (max-width: 600px) {
+        .bn-card { width:100%; padding:12px; gap:10px; }
+        .bn-text { font-size:1.05rem; line-height:1.7; }
+        .bn-pic { font-size:2.2rem; padding:6px 8px; }
+        .bn-row { font-size:1.15rem; }
+        .bn-ans { white-space:normal; flex-wrap:wrap; }
+        #bn-main .numpad { display:grid; }
+    }
+    `;
+    document.head.appendChild(css);
+
+    /* ---------- 部品を置く ---------- */
+    const sub = document.createElement('div');
+    sub.id = 'bun-sub';
+    sub.className = 'level-wrap';
+    sub.innerHTML =
+          '<button class="level-btn" data-bn="ikutsu">わりきれる</button>'
+        + '<button class="level-btn" data-bn="amari">あまりがある</button>'
+        + '<button class="level-btn" data-bn="bai">何倍</button>'
+        + '<button class="level-btn active" data-bn="random">ランダム</button>';
+    $('ouyou-sub').after(sub);
+
+    const main = document.createElement('div');
+    main.id = 'bn-main';
+    main.className = 'main-content';
+    main.innerHTML =
+          '<div class="bn-card" id="bn-card"></div>'
+        + '<div class="controls">'
+        +   '<button id="bn-hint" class="hint-btn">ヒント</button>'
+        +   '<button id="bn-reset" class="reset-btn">もう一度</button>'
+        + '</div>'
+        + '<div style="position: relative;"><div id="bn-numpad" class="numpad">'
+        +   [1,2,3,4,5,6,7,8,9].map(n => '<button class="num-btn" data-v="' + n + '">' + n + '</button>').join('')
+        +   '<div style="visibility:hidden"></div><button class="num-btn" data-v="0">0</button><div style="visibility:hidden"></div>'
+        + '</div></div>';
+    document.querySelector('.main-content').after(main);
+
+    /* ---------- 画面 ---------- */
+    function boxHtml(key) {
+        const s = steps[si] || {};
+        const idx = steps.findIndex(x => x.box === key);
+        let v = '';
+        if (idx < si) v = String(steps[idx].val);
+        else if (idx === si) v = steps[idx].type === 'auto' ? String(steps[idx].val) : typed;
+        const cls = idx === si && !done ? (steps[idx].type === 'auto' ? ' ok' : ' now') : idx < si ? ' ok' : '';
+        return `<span class="bn-box${cls}" id="bn-b-${key}">${v}</span>`;
+    }
+    function textHtml() {
+        const usedA = si > 0, usedB = si > 1;
+        return P.sc.text
+            .replace('{A}', `<span class="bn-num${usedA ? ' used' : ''}" id="bn-nA" data-n="${P.a}">${P.a}</span>`)
+            .replace('{B}', `<span class="bn-num${usedB ? ' used' : ''}" id="bn-nB" data-n="${P.b}">${P.b}</span>`);
+    }
+    function render() {
+        const s = steps[si];
+        const hasR = P.kd === 'amari';
+        const ans = P.sc.ans.map(x => typeof x === 'number' ? boxHtml('a' + x) : `<span>${x}</span>`).join('');
+        const card = $('bn-card');
+        card.classList.toggle('tapping', !done && s.type === 'tap');
+        // はなまるを いったん外して、中身を書きかえてから もどす
+        const hm = $('hanamaru');
+        card.innerHTML =
+              `<div class="bn-q"><div class="bn-text">${textHtml()}</div><div class="bn-pic">${P.sc.pic}</div></div>`
+            + '<div class="bn-row"><span class="bn-lab">式</span>'
+            +   boxHtml('e0') + '<span class="bn-op">÷</span>' + boxHtml('e1') + '<span class="bn-op">＝</span>' + boxHtml('eq')
+            +   (hasR ? '<span class="bn-op">あまり</span>' + boxHtml('er') : '')
+            + '</div>'
+            + '<div class="bn-row"><span class="bn-lab ans">答え</span><span class="bn-ans"><span class="bn-paren">（</span>' + ans + '<span class="bn-paren">）</span></span></div>'
+            + `<div class="bn-msg${msg.startsWith('💡') ? ' hint' : ''}">${msg}</div>`;
+        if (active) card.appendChild(hm);
+        if (!done) $('instruction').innerHTML = s.text;
+        $('bn-numpad').classList.toggle('off', done || s.type !== 'num');
+    }
+
+    function start(p) {
+        clearTimeout(autoTimer); clearTimeout(stepTimer);
+        P = p; steps = plan(); si = 0; typed = ''; msg = ''; done = false;
+        // 本体のボタン・まちがいの記録が動かないように
+        states = [{ id: 0, type: 'wait', text: '' }]; state = 0;
+        startTime = Date.now();
+        errorStats = { tateru: 0, kakeru: 0, hiku: 0, orosu: 0, other: 0 };
+        dividend = P.a; divisor = P.b; q = P.q;
+        $('hanamaru').classList.remove('show');
+        render();
+    }
+
+    function nextStep() {
+        si++; typed = ''; msg = '';
+        if (steps[si].type === 'finish') {
+            done = true;
+            render();
+            const auto = !Challenge10.isOn() && !(window.TestRun && TestRun.on && TestRun.on());
+            showClearEffect();
+            if (auto) autoTimer = setTimeout(() => {
+                if (!active || mode !== MODE) return;
+                Challenge10.newProblem();
+                start(make(nextKind()));
+            }, 2500);
+            return;
+        }
+        render();
+        // 計算の答え（商・あまり）は自動で出して、少し見せてから次へ
+        if (steps[si].type === 'auto') stepTimer = setTimeout(() => { if (active) nextStep(); }, 800);
+    }
+
+    function wrong(text, elId) {
+        msg = text || '';
+        render();
+        handleWrong(elId);
+    }
+
+    /* ---------- 操作 ---------- */
+    $('bn-card').addEventListener('click', e => {
+        const el = e.target.closest('.bn-num');
+        if (!el || !active || done) return;
+        const s = steps[si];
+        if (s.type !== 'tap' || el.classList.contains('used')) return;
+        if (Number(el.dataset.n) !== s.val) {
+            wrong(P.kd === 'bai'
+                ? 'くらべる大きさ ÷ もとに する大きさ で もとめるよ。わられる数は どっちかな。'
+                : P.sc.tobun ? 'ぜんぶの数 ÷ 分ける 人数 だよ。わられる数は どっちかな。'
+                             : 'ぜんぶの数 ÷ 1つ分の数 だよ。わられる数は どっちかな。', el.id);
+            return;
+        }
+        playSound('click');
+        nextStep();
+    });
+
+    $('bn-numpad').addEventListener('click', e => {
+        const b = e.target.closest('[data-v]');
+        if (b) press(b.dataset.v);
+    });
+    function press(v) {
+        if (!active || done) return;
+        const s = steps[si];
+        if (s.type !== 'num') return;
+        const want = String(s.val);
+        if (v !== want[typed.length]) {
+            typed = '';
+            wrong(s.box === 'eq' ? 'もう一度 計算してみよう。'
+                : s.box === 'er' ? 'あまりを たしかめよう。'
+                : '式の 答えを 見てみよう。', 'bn-b-' + s.box);
+            return;
+        }
+        playSound('click');
+        typed += v;
+        if (typed === want) { nextStep(); return; }
+        msg = '';
+        render();
+    }
+    document.addEventListener('keydown', e => {
+        if (!active || !/^[0-9]$/.test(e.key)) return;
+        if (document.body.querySelector('#test-result.show, #chal-result[style*="flex"]')) return;
+        press(e.key);
+    });
+
+    $('bn-hint').addEventListener('click', () => {
+        if (!active || done) return;
+        const s = steps[si];
+        if (s.type === 'auto') return;
+        playSound('click');
+        msg = '💡 ' + s.hint;
+        render();
+        const el = s.type === 'tap' ? $(s.val === P.a ? 'bn-nA' : 'bn-nB') : $('bn-b-' + s.box);
+        if (el) el.classList.add('hint-glow');
+    });
+
+    $('bn-reset').addEventListener('click', () => {
+        if (!active) return;
+        playSound('click');
+        // テストの練習中は同じ問題、ふだんは新しい問題
+        if (window.TestRun && TestRun.on && TestRun.on()) start(make(P.kd, [P.a, P.b]));
+        else { Challenge10.newProblem(); start(make(nextKind())); }
+    });
+
+    sub.addEventListener('click', e => {
+        const b = e.target.closest('[data-bn]');
+        if (!b) return;
+        kind = b.dataset.bn;
+        bag = [];
+        sub.querySelectorAll('.level-btn').forEach(x => x.classList.toggle('active', x === b));
+        playSound('click');
+        if (Challenge10.isOn()) Challenge10.reset();
+        Challenge10.newProblem();
+        start(make(nextKind()));
+    });
+
+    /* ---------- 本体とのつなぎ ---------- */
+    function enter() {
+        let p;
+        if (Array.isArray(forceProblem)) p = fromProb(forceProblem);   // テストの練習で数が決まっているとき
+        else p = make(nextKind());
+        forceProblem = null;
+        sub.style.display = 'flex';
+        if (!active) {
+            active = true;
+            main.style.display = 'flex';
+            hanaHome = $('hanamaru').parentNode;
+        }
+        mode = MODE;
+        start(p);
+    }
+    function leave() {
+        if (!active) return;
+        active = false;
+        clearTimeout(autoTimer); clearTimeout(stepTimer);
+        main.style.display = 'none';
+        sub.style.display = 'none';
+        if (hanaHome) hanaHome.appendChild($('hanamaru'));
+        $('hanamaru').classList.remove('show');
+    }
+
+    const _init = initGame;
+    initGame = function () {
+        if (currentMode === MODE) {
+            _init.apply(this, arguments);   // ほかの画面をとじる（本体は SOON_MODES なので筆算をかくすだけ）
+            enter();
+            return;
+        }
+        leave();
+        return _init.apply(this, arguments);
+    };
+    const _ans = answerText;
+    answerText = function () {
+        if (mode !== MODE || !P) return _ans.apply(this, arguments);
+        const ans = P.sc.ans.map(x => typeof x === 'number' ? String(x === 0 ? P.q : P.r) : x).join('');
+        // 本体がこのあとにつける「○秒！」は、見えない <span> の中に入るので出ない（画面がずれないように）
+        return `${P.a}÷${P.b}＝${P.q}${P.r ? ' あまり ' + P.r : ''}　答え ${ans}<span style="display:none">`;
+    };
+})();
+</script>
+
 <!-- ============================================================
      📝 テストの練習 ①せってい（ここだけ先生が直す）
      どのテストで、どの大問を、どの順に出すか。
@@ -4977,7 +5391,8 @@ window.TestRun = (function () {
         'kufu':        'くふう',
         'ketasu':      '商のけた数',
         'kentou':      '商の見当',
-        'testmon':     'くふうして筆算／商のたつ位'
+        'testmon':     'くふうして筆算／商のたつ位',
+        'bunsho':      '文章題'
     };
 
     // タブ・サブボタンの見た目を、いまのモードに合わせる
@@ -5045,7 +5460,7 @@ window.TestRun = (function () {
         const _wrong = handleWrong;
         handleWrong = function () { api.miss(); return _wrong.apply(this, arguments); };
         // ヒントを見たら 💡
-        ['btn-hint', 'btn-kakusu', 'btn-divup', 'btn-bothup', 'tm-hint'].forEach(id => {
+        ['btn-hint', 'btn-kakusu', 'btn-divup', 'btn-bothup', 'tm-hint', 'bn-hint'].forEach(id => {
             const b = $(id);
             if (b) b.addEventListener('click', () => { const r = cur(); if (r && r.st === 'todo') r.hint = true; });
         });
